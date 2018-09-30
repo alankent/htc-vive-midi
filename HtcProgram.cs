@@ -287,6 +287,7 @@ namespace HtcMidi
 
                     // TODO: Yeah, should throw an exception...
                     Console.WriteLine("Unable to init VR runtime: " + OpenVR.GetStringForHmdError(eError));
+                    Thread.Sleep(5000);
                     System.Environment.Exit(1);
                 }
             }
