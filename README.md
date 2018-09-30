@@ -11,7 +11,7 @@ Currently the headset is not used - just the hand controllers. There is also
 no support for additional Vive trackers, which would be nice to attach to
 legs etc for controlling more of the body.
 
-= Compliing the Code =
+== Compliing the Code ==
 
 I don't know the right way to set up a C# project in Visual Studio. Advice
 appreciated! You do need two other projects to compile up the code I provide.
@@ -22,7 +22,7 @@ appreciated! You do need two other projects to compile up the code I provide.
 The only trick was the OpenVR instructions talked about adding a DLL (I used
 the 32 bit version). The C# code calls into the DLL.
 
-= Set Up =
+== Set Up ==
 
 Normally Windows has a single MIDI device, which is a built in device to
 make some simple noises. If you plug in external MIDI devices, additional
@@ -47,17 +47,17 @@ utility at.
 
 To run this utility, you must supply a number of command line arguments:
 
-      HtcMidi.exe <device-id> <midi-channel> <fps> all|lx|ly|rx|ry <min-x> <max-x> <min-y> <max-y>
+      HtcMidi.exe <device-id> <midi-channel> <fps> all|none|lx|ly|rx|ry <min-x> <max-x> <min-y> <max-y>
 
 The arguments are as follows:
 
 * `<device-id>` is the integer number of the MIDI device id to send the MIDI messages to.
 * `<midi-channel>` the midi channel number to use. 1 should be fine for most cases.
 * `<fps>` is the target frames per second for the animation, which is the rate positional events will be sent to Character Animator. 24 is high accuracy, but it it overloads your system back it off to something like 8.
-* `all|lx|ly|rx|ry` specifies which controller events to emit (more below).
+* `all|none|lx|ly|rx|ry` specifies which controller events to emit (more below).
 * `<min/max-x/y>` is the min and max raw values for actual values you want to use.
 
-= How to calibrate min/max X/Y =
+== How to calibrate min/max X/Y ==
 
 There first is the question of how to work out the min/max-x/y values.
 The tool uses the min/max X/Y values to scale positional values into the range
@@ -80,7 +80,7 @@ controller messages. These are the actual numbers sent to Character Animator.
 
 Character Animator applies an additional scale factor to the positional data.
 
-= Binding Controllers Positional Data to Character Animator =
+== Binding Controllers Positional Data to Character Animator ==
 
 Be aware the work "control" has multiple meanings - make sure you have the
 right one in mind. Specifically
@@ -117,7 +117,7 @@ No, its not very elegant. What would be nicer is a GUI with buttons, but
 my C# programming skills are not very good. Volunteers to clean this up
 would be welcome!
 
-= Future Work =
+== Future Work ==
 
 I got this code to work, just, then stopped. It works for me, but if anyone
 would like to clean it up and improve, feel free! The following were some
