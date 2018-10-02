@@ -250,7 +250,8 @@ namespace HtcMidi
 
                                         if (fps == 1)
                                         {
-                                            Debug(((role == ETrackedControllerRole.LeftHand) ? "LEFT " : "RIGHT") + "  x: " + vector.m3 + " " + x + "  y: " + vector.m7 + " " + y);
+                                            // The README.md file references this output syntax.
+                                            Debug(((role == ETrackedControllerRole.LeftHand) ? "LEFT " : "RIGHT") + "  x: " + vector.m3 + " (" + x + ")  y: " + vector.m7 + " (" + y + ")");
 
                                             // Don't get too verbose with both controllers.
                                             if (role == ETrackedControllerRole.LeftHand)
