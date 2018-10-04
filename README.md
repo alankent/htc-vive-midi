@@ -158,7 +158,9 @@ open, closed a bit, pointing, fully closed. That would mean left/right triggers
 control left/right hand positions.
 
 Could use rotation of the controller to show palm of hand / back of hand
-in artwork, to get the hands to look more natural.
+in artwork, to get the hands to look more natural. At present, same hand
+rotates 360 degress, which frankly looks strange (you cannot physically do it).
+Need to flip to a different hand position at a certain angle.
 
 This code is currently experimental - use at own risk.
 

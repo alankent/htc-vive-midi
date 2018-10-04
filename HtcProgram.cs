@@ -3,6 +3,7 @@ using Sanford.Multimedia.Midi;
 using System.Threading;
 using Valve.VR;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace HtcMidi
 {
@@ -36,6 +37,43 @@ namespace HtcMidi
             internal const int TouchpadTouchOffset = 2;
             internal const int TouchpadPressOffset = 3;
             internal const int GripButtonOffset = 4;
+
+            // Palm direction offsets
+            internal const int PalmForwardOffset = 10;
+            internal const int PalmDownOffset = 11;
+            internal const int PalmBackwardOffset = 12;
+            internal const int PalmUpOffset = 13;
+        };
+
+        internal class NoteStruct
+        {
+            public string Name { get; set; }
+            public int NoteID { get; set; }
+            public string Description { get; set; }
+        };
+        private static NoteStruct[] notes = new NoteStruct[] 
+        {
+            new NoteStruct { Name = "lamb", NoteID = NoteID.LeftBase + NoteID.ApplicationMenuButtonOffset, Description = "Left Application Menu Button" },
+            new NoteStruct { Name = "ltrb", NoteID = NoteID.LeftBase + NoteID.TriggerButtonOffset, Description = "Left Trigger Button" },
+            new NoteStruct { Name = "ltot", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset, Description = "Left Touchpad Touch" },
+            new NoteStruct { Name = "ltop", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset, Description = "Left Touchpad Press" },
+            new NoteStruct { Name = "lgrb", NoteID = NoteID.LeftBase + NoteID.GripButtonOffset, Description = "Left Grip Button" },
+
+            new NoteStruct { Name = "lnpf", NoteID = NoteID.LeftBase + NoteID.PalmForwardOffset, Description = "Left Palm Forwards" },
+            new NoteStruct { Name = "lnpd", NoteID = NoteID.LeftBase + NoteID.PalmDownOffset, Description = "Left Palm Down" },
+            new NoteStruct { Name = "lnpb", NoteID = NoteID.LeftBase + NoteID.PalmBackwardOffset, Description = "Left Palm Backwards" },
+            new NoteStruct { Name = "lnpu", NoteID = NoteID.LeftBase + NoteID.PalmUpOffset, Description = "Left Palm Up" },
+
+            new NoteStruct { Name = "ramb", NoteID = NoteID.RightBase + NoteID.ApplicationMenuButtonOffset, Description = "Right Application Menu Button" },
+            new NoteStruct { Name = "rtrb", NoteID = NoteID.RightBase + NoteID.TriggerButtonOffset, Description = "Right Trigger Button" },
+            new NoteStruct { Name = "rtot", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset, Description = "Right Touchpad Touch" },
+            new NoteStruct { Name = "rtop", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset, Description = "Right Touchpad Press" },
+            new NoteStruct { Name = "rgrb", NoteID = NoteID.RightBase + NoteID.GripButtonOffset, Description = "Right Grip Button" },
+
+            new NoteStruct { Name = "rnpf", NoteID = NoteID.RightBase + NoteID.PalmForwardOffset, Description = "Right Palm Forwards" },
+            new NoteStruct { Name = "rnpd", NoteID = NoteID.RightBase + NoteID.PalmDownOffset, Description = "Right Palm Down" },
+            new NoteStruct { Name = "rnpb", NoteID = NoteID.RightBase + NoteID.PalmBackwardOffset, Description = "Right Palm Backwards" },
+            new NoteStruct { Name = "rnpu", NoteID = NoteID.RightBase + NoteID.PalmUpOffset, Description = "Right Palm Up" },
         };
 
         private class HtcToMidi
@@ -93,6 +131,10 @@ namespace HtcMidi
             public void ProcessHtcEvents()
             {
                 InitHtc();
+
+                // Remember previous direction of palms so we only output events if things change.
+                int currentLeftHandPalmDir = -1;
+                int currentRightHandPalmDir = -1;
 
                 // Loop polling for VR events.
                 bool exitLoop = false;
@@ -247,6 +289,53 @@ namespace HtcMidi
 
                                         // Left controller = puppet right hand.
                                         int deg = MatrixToDegrees(vector, (role == ETrackedControllerRole.LeftHand) ? rightHandAngle : leftHandAngle);
+
+                                        // Work out hand twist position.
+                                        // m9 being negative means palm is facing screen, positive is back of hand facing screen.
+                                        // If m9 is around zero, then m2 postive/negative indicates rotation of hand.
+                                        // We want to normalize to 0 = palm towards screen, 1 = palm down, 2 = palm away from screen, 3 = palm up.
+                                        int palmDir = (role == ETrackedControllerRole.LeftHand) ? NoteID.LeftBase : NoteID.RightBase;
+                                        if (vector.m9 < -0.6)
+                                        {
+                                            palmDir += NoteID.PalmForwardOffset;
+                                        }
+                                        else if (vector.m9 > 0.6)
+                                        {
+                                            palmDir += NoteID.PalmBackwardOffset;
+                                        }
+                                        else if (vector.m2 < 0.0)
+                                        {
+                                            palmDir += NoteID.PalmDownOffset;
+                                        }
+                                        else
+                                        {
+                                            palmDir += NoteID.PalmUpOffset;
+                                        }
+                                        if (role == ETrackedControllerRole.LeftHand)
+                                        {
+                                            if (palmDir != currentLeftHandPalmDir)
+                                            {
+                                                if (currentLeftHandPalmDir >= 0)
+                                                {
+                                                    NoteOff(currentLeftHandPalmDir);
+                                                }
+                                                NoteOn(palmDir);
+                                                currentLeftHandPalmDir = palmDir;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (palmDir != currentRightHandPalmDir)
+                                            {
+                                                if (currentRightHandPalmDir >= 0)
+                                                {
+                                                    NoteOff(currentRightHandPalmDir);
+                                                }
+                                                NoteOn(palmDir);
+                                                currentRightHandPalmDir = palmDir;
+                                            }
+
+                                        }
 
                                         if (fps == 1)
                                         {
@@ -473,75 +562,90 @@ namespace HtcMidi
 
                     if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.Notes)
                     {
-                        Thread.Sleep(2000);
-                        Debug("Left Button: Application Menu");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.LeftBase + NoteID.ApplicationMenuButtonOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.LeftBase + NoteID.ApplicationMenuButtonOffset);
+                        foreach (NoteStruct n in notes)
+                        {
+                            Thread.Sleep(1000);
+                            Debug(n.Description);
+                            Thread.Sleep(1000);
+                            NoteOn(n.NoteID);
+                            Thread.Sleep(2000);
+                            NoteOff(n.NoteID);
+                        }
 
-                        Thread.Sleep(2000);
-                        Debug("Left Button: Trigger");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-
-                        Thread.Sleep(2000);
-                        Debug("Left Button: Touchpad touch");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.LeftBase + NoteID.TouchpadTouchOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.LeftBase + NoteID.TouchpadTouchOffset);
-
-                        Thread.Sleep(2000);
-                        Debug("Left Button: Touchpad Press");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.LeftBase + NoteID.TouchpadPressOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.LeftBase + NoteID.TouchpadPressOffset);
-
-                        Thread.Sleep(2000);
-                        Debug("Left Button: Grip");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.LeftBase + NoteID.GripButtonOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.LeftBase + NoteID.GripButtonOffset);
-
-                        Thread.Sleep(2000);
-                        Debug("Right Button: Application Menu");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.RightBase + NoteID.ApplicationMenuButtonOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.RightBase + NoteID.ApplicationMenuButtonOffset);
-
-                        Thread.Sleep(2000);
-                        Debug("Right Button: Trigger");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
-
-                        Thread.Sleep(2000);
-                        Debug("Right Button: Touchpad touch");
+                        // Test hand rotations with trigger on/off.
                         Thread.Sleep(1000);
-                        NoteOn(NoteID.RightBase + NoteID.TouchpadTouchOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.RightBase + NoteID.TouchpadTouchOffset);
+                        Debug("Palm forward + trigger");
+                        NoteOn(NoteID.LeftBase + NoteID.PalmForwardOffset);
+                        Thread.Sleep(1000);
+                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
+                        Thread.Sleep(1000);
+                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
+                        NoteOff(NoteID.LeftBase + NoteID.PalmForwardOffset);
 
-                        Thread.Sleep(2000);
-                        Debug("Right Button: Touchpad Press");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.RightBase + NoteID.TouchpadPressOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.RightBase + NoteID.TouchpadPressOffset);
+                        Thread.Sleep(1000);
+                        Debug("Palm down + trigger");
+                        NoteOn(NoteID.LeftBase + NoteID.PalmDownOffset);
+                        Thread.Sleep(1000);
+                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
+                        Thread.Sleep(1000);
+                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
+                        NoteOff(NoteID.LeftBase + NoteID.PalmDownOffset);
 
-                        Thread.Sleep(2000);
-                        Debug("Right Button: Grip");
-                        Thread.Sleep(2000);
-                        NoteOn(NoteID.RightBase + NoteID.GripButtonOffset);
-                        Thread.Sleep(2000);
-                        NoteOff(NoteID.RightBase + NoteID.GripButtonOffset);
+                        Thread.Sleep(1000);
+                        Debug("Palm back + trigger");
+                        NoteOn(NoteID.LeftBase + NoteID.PalmBackwardOffset);
+                        Thread.Sleep(1000);
+                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
+                        Thread.Sleep(1000);
+                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
+                        NoteOff(NoteID.LeftBase + NoteID.PalmBackwardOffset);
+
+                        Thread.Sleep(1000);
+                        Debug("Palm up + trigger");
+                        NoteOn(NoteID.LeftBase + NoteID.PalmUpOffset);
+                        Thread.Sleep(1000);
+                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
+                        Thread.Sleep(1000);
+                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
+                        NoteOff(NoteID.LeftBase + NoteID.PalmUpOffset);
+
+                        // Test hand rotations with trigger on/off.
+                        Thread.Sleep(1000);
+                        Debug("Palm forward + trigger");
+                        NoteOn(NoteID.RightBase + NoteID.PalmForwardOffset);
+                        Thread.Sleep(1000);
+                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
+                        Thread.Sleep(1000);
+                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
+                        NoteOff(NoteID.RightBase + NoteID.PalmForwardOffset);
+
+                        Thread.Sleep(1000);
+                        Debug("Palm down + trigger");
+                        NoteOn(NoteID.RightBase + NoteID.PalmDownOffset);
+                        Thread.Sleep(1000);
+                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
+                        Thread.Sleep(1000);
+                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
+                        NoteOff(NoteID.RightBase + NoteID.PalmDownOffset);
+
+                        Thread.Sleep(1000);
+                        Debug("Palm back + trigger");
+                        NoteOn(NoteID.RightBase + NoteID.PalmBackwardOffset);
+                        Thread.Sleep(1000);
+                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
+                        Thread.Sleep(1000);
+                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
+                        NoteOff(NoteID.RightBase + NoteID.PalmBackwardOffset);
+
+                        Thread.Sleep(1000);
+                        Debug("Palm up + trigger");
+                        NoteOn(NoteID.RightBase + NoteID.PalmUpOffset);
+                        Thread.Sleep(1000);
+                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
+                        Thread.Sleep(1000);
+                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
+                        NoteOff(NoteID.RightBase + NoteID.PalmUpOffset);
+
                     }
                 }
             }
@@ -609,7 +713,11 @@ namespace HtcMidi
             {
                 case "htc-vive": { testMode = false; break; }
                 case "test": { testMode = true; break; }
-                default: { Usage("<mode> must be one of 'htc-vive' or 'test'."); break; }
+                default:
+                    {
+                        Usage("<mode> must be one of 'htc-vive' or 'test'.");
+                        break;
+                    }
             }
 
             // See which controllers to enable. (It is useful to restrict controllers when doing rigging in Character Animator.)
@@ -625,7 +733,21 @@ namespace HtcMidi
                 case "rx": { controllerEnablement = ControllerEnablement.RightX; break; }
                 case "ry": { controllerEnablement = ControllerEnablement.RightY; break; }
                 case "ra": { controllerEnablement = ControllerEnablement.RightHandAngle; break; }
-                default: { Usage("<mode> must be one of 'all', 'none', 'lx', 'ly', 'la', 'rx', 'ry', or 'ra'."); break; }
+                default:
+                    {
+                        foreach (NoteStruct n in notes)
+                        {
+                            if (n.Name == args[10])
+                            {
+                                HtcToMidi htom = new HtcToMidi(new OutputDevice(outDeviceID), channelNumber, fps, ControllerEnablement.None, minX, maxX, minY, maxY, lha, rha);
+                                Console.WriteLine("Sending " + n.Name + " - " + n.Description);
+                                htom.NoteOn(n.NoteID);
+                                return;
+                            }
+                        }
+                        Usage("<mode> must be one of 'all', 'none', 'lx', 'ly', 'la', 'rx', 'ry', 'ra', or a button name.");
+                        break;
+                    }
             }
 
             // Connect to the MIDI output device.
@@ -648,13 +770,18 @@ namespace HtcMidi
         private static void Usage(string message)
         {
             Console.WriteLine(message);
-            Console.WriteLine("Usage: HtcMidi.exe <device-id> <midi-channel> <fps> <min-x> <max-x> <min-y> <max-y> <puppet-right-hand-angle> <puppet-left-hand-angle> htc-vive|test all|none|lx|ly|la|rx|ry|ra");
+            Console.WriteLine("Usage: HtcMidi.exe <device-id> <midi-channel> <fps> <min-x> <max-x> <min-y> <max-y> <puppet-right-hand-angle> <puppet-left-hand-angle> htc-vive|test all|none|lx|ly|la|rx|ry|ra|<button>");
             Console.WriteLine("e.g. HtcMidi 1 2 25 0 1.8 0.8 1.6 220 120 test all");
-            Console.WriteLine("Available MIDI devices:");
+            Console.WriteLine("\nAvailable MIDI devices:");
             for (int i = 0; i < OutputDevice.DeviceCount; i++)
             {
                 MidiOutCaps cap = OutputDevice.GetDeviceCapabilities(i);
                 Console.WriteLine("" + i + ": " + cap.name);
+            }
+            Console.WriteLine("\nButtons:");
+            foreach (NoteStruct n in notes)
+            {
+                Console.WriteLine(n.Name + " (" + n.NoteID + ") - " + n.Description);
             }
             Thread.Sleep(5000);
             System.Environment.Exit(1);
