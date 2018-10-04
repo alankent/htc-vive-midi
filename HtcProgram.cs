@@ -41,8 +41,8 @@ namespace HtcMidi
             internal const int PalmUpOffset = 8;
 
             // Touchpad 1-9 (like phone touchpad cells)
-            internal const int TouchpadTouchOffset = 10;
-            internal const int TouchpadPressOffset = 20;
+            internal const int TouchpadTouchOffset = 11;
+            internal const int TouchpadPressOffset = 11 + 12;
 
         };
 
@@ -118,6 +118,11 @@ namespace HtcMidi
             "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
         };
 
+        private static string NoteIDToString(int noteID)
+        {
+            return noteNames[noteID % 12] + (noteID / 12).ToString();
+        }
+
         private class HtcToMidi
         {
             private OutputDevice outDevice;
@@ -174,11 +179,6 @@ namespace HtcMidi
                 int zeroVelocity = 0;
                 outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, zeroVelocity));
                 Console.WriteLine("NoteOff " + noteID + " " + NoteIDToString(noteID));
-            }
-
-            private static string NoteIDToString(int noteID)
-            {
-                return noteNames[noteID % 12] + (noteID / 12).ToString();
             }
 
             // Send a Controller MIDI event (controller values must be in the range 0 to 127)
@@ -1087,7 +1087,7 @@ namespace HtcMidi
             Console.WriteLine("-rha|--right-hand-angle <int>   Default angle of puppets right hand (220)");
             Console.WriteLine("-lha|--left-hand-angle <int>    Default angle of puppets left hand (140)");
             Console.WriteLine("-t|--test             Generate a selection of synthentic test data (off)");
-            Console.WriteLine("-n|--note <string>    Send a single note for the given button name (off)");
+            Console.WriteLine("-n|--note <string>    Send a single note for the given note/button (off)");
             Console.WriteLine("-C|--controller all|none|lx|ly|la|rx|ry|ra   Only send specifed controller data (all)");
             Console.WriteLine("\ne.g. HtcMidi -lha 90 -rha 90 --test");
             Console.WriteLine("\ne.g. HtcMidi --note ltop   (send left touchpad press)");
@@ -1097,10 +1097,11 @@ namespace HtcMidi
                 MidiOutCaps cap = OutputDevice.GetDeviceCapabilities(i);
                 Console.WriteLine("" + i + ": " + cap.name);
             }
-            Console.WriteLine("\nNote buttons:");
+            Console.WriteLine("\nNote names can be note numbers (60 = C4), 'G#3', or button names.");
+            Console.WriteLine("Buttons:");
             foreach (NoteStruct n in notes)
             {
-                Console.WriteLine(n.Name + " (" + n.NoteID + ") - " + n.Description);
+                Console.WriteLine(n.Name + " (" + NoteIDToString(n.NoteID) + " " + n.NoteID + ") - " + n.Description);
             }
             Thread.Sleep(5000);
             System.Environment.Exit(1);
