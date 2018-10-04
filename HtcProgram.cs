@@ -34,15 +34,18 @@ namespace HtcMidi
             // The following are added to the Left/Right Base values.
             internal const int ApplicationMenuButtonOffset = 0;
             internal const int TriggerButtonOffset = 1;
-            internal const int TouchpadTouchOffset = 2;
-            internal const int TouchpadPressOffset = 3;
-            internal const int GripButtonOffset = 4;
+            internal const int GripButtonOffset = 2;
 
             // Palm direction offsets
             internal const int PalmForwardOffset = 10;
             internal const int PalmDownOffset = 11;
             internal const int PalmBackwardOffset = 12;
             internal const int PalmUpOffset = 13;
+
+            // Touchpad 1-9 (like phone touchpad cells)
+            internal const int TouchpadTouchOffset = 20;
+            internal const int TouchpadPressOffset = 30;
+
         };
 
         internal class NoteStruct
@@ -55,8 +58,6 @@ namespace HtcMidi
         {
             new NoteStruct { Name = "lamb", NoteID = NoteID.LeftBase + NoteID.ApplicationMenuButtonOffset, Description = "Left Application Menu Button" },
             new NoteStruct { Name = "ltrb", NoteID = NoteID.LeftBase + NoteID.TriggerButtonOffset, Description = "Left Trigger Button" },
-            new NoteStruct { Name = "ltot", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset, Description = "Left Touchpad Touch" },
-            new NoteStruct { Name = "ltop", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset, Description = "Left Touchpad Press" },
             new NoteStruct { Name = "lgrb", NoteID = NoteID.LeftBase + NoteID.GripButtonOffset, Description = "Left Grip Button" },
 
             new NoteStruct { Name = "lnpf", NoteID = NoteID.LeftBase + NoteID.PalmForwardOffset, Description = "Left Palm Forwards" },
@@ -64,16 +65,56 @@ namespace HtcMidi
             new NoteStruct { Name = "lnpb", NoteID = NoteID.LeftBase + NoteID.PalmBackwardOffset, Description = "Left Palm Backwards" },
             new NoteStruct { Name = "lnpu", NoteID = NoteID.LeftBase + NoteID.PalmUpOffset, Description = "Left Palm Up" },
 
+            new NoteStruct { Name = "ltt1", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 1, Description = "Left Touchpad Touch 1 NW" },
+            new NoteStruct { Name = "ltt2", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 2, Description = "Left Touchpad Touch 2 N" },
+            new NoteStruct { Name = "ltt3", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 3, Description = "Left Touchpad Touch 3 NE" },
+            new NoteStruct { Name = "ltt4", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 4, Description = "Left Touchpad Touch 4 W" },
+            new NoteStruct { Name = "ltt5", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 5, Description = "Left Touchpad Touch 5 0" },
+            new NoteStruct { Name = "ltt6", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 6, Description = "Left Touchpad Touch 6 E" },
+            new NoteStruct { Name = "ltt7", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 7, Description = "Left Touchpad Touch 7 SW" },
+            new NoteStruct { Name = "ltt8", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 8, Description = "Left Touchpad Touch 8 S" },
+            new NoteStruct { Name = "ltt9", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 9, Description = "Left Touchpad Touch 9 SE" },
+
+            new NoteStruct { Name = "ltp1", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 1, Description = "Left Touchpad Press 1 NW" },
+            new NoteStruct { Name = "ltp2", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 2, Description = "Left Touchpad Press 2 N" },
+            new NoteStruct { Name = "ltp3", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 3, Description = "Left Touchpad Press 3 NE" },
+            new NoteStruct { Name = "ltp4", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 4, Description = "Left Touchpad Press 4 W" },
+            new NoteStruct { Name = "ltp5", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 5, Description = "Left Touchpad Press 5 0" },
+            new NoteStruct { Name = "ltp6", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 6, Description = "Left Touchpad Press 6 E" },
+            new NoteStruct { Name = "ltp7", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 7, Description = "Left Touchpad Press 7 SW" },
+            new NoteStruct { Name = "ltp8", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 8, Description = "Left Touchpad Press 8 S" },
+            new NoteStruct { Name = "ltp9", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 9, Description = "Left Touchpad Press 9 SE" },
+
+
+
             new NoteStruct { Name = "ramb", NoteID = NoteID.RightBase + NoteID.ApplicationMenuButtonOffset, Description = "Right Application Menu Button" },
             new NoteStruct { Name = "rtrb", NoteID = NoteID.RightBase + NoteID.TriggerButtonOffset, Description = "Right Trigger Button" },
-            new NoteStruct { Name = "rtot", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset, Description = "Right Touchpad Touch" },
-            new NoteStruct { Name = "rtop", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset, Description = "Right Touchpad Press" },
             new NoteStruct { Name = "rgrb", NoteID = NoteID.RightBase + NoteID.GripButtonOffset, Description = "Right Grip Button" },
 
             new NoteStruct { Name = "rnpf", NoteID = NoteID.RightBase + NoteID.PalmForwardOffset, Description = "Right Palm Forwards" },
             new NoteStruct { Name = "rnpd", NoteID = NoteID.RightBase + NoteID.PalmDownOffset, Description = "Right Palm Down" },
             new NoteStruct { Name = "rnpb", NoteID = NoteID.RightBase + NoteID.PalmBackwardOffset, Description = "Right Palm Backwards" },
             new NoteStruct { Name = "rnpu", NoteID = NoteID.RightBase + NoteID.PalmUpOffset, Description = "Right Palm Up" },
+
+            new NoteStruct { Name = "rtt1", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 1, Description = "Right Touchpad Touch 1 NW" },
+            new NoteStruct { Name = "rtt2", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 2, Description = "Right Touchpad Touch 2 N" },
+            new NoteStruct { Name = "rtt3", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 3, Description = "Right Touchpad Touch 3 NE" },
+            new NoteStruct { Name = "rtt4", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 4, Description = "Right Touchpad Touch 4 W" },
+            new NoteStruct { Name = "rtt5", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 5, Description = "Right Touchpad Touch 5 0" },
+            new NoteStruct { Name = "rtt6", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 6, Description = "Right Touchpad Touch 6 E" },
+            new NoteStruct { Name = "rtt7", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 7, Description = "Right Touchpad Touch 7 SW" },
+            new NoteStruct { Name = "rtt8", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 8, Description = "Right Touchpad Touch 8 S" },
+            new NoteStruct { Name = "rtt9", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 9, Description = "Right Touchpad Touch 9 SE" },
+
+            new NoteStruct { Name = "rtp1", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 1, Description = "Right Touchpad Press 1 NW" },
+            new NoteStruct { Name = "rtp2", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 2, Description = "Right Touchpad Press 2 N" },
+            new NoteStruct { Name = "rtp3", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 3, Description = "Right Touchpad Press 3 NE" },
+            new NoteStruct { Name = "rtp4", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 4, Description = "Right Touchpad Press 4 W" },
+            new NoteStruct { Name = "rtp5", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 5, Description = "Right Touchpad Press 5 0" },
+            new NoteStruct { Name = "rtp6", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 6, Description = "Right Touchpad Press 6 E" },
+            new NoteStruct { Name = "rtp7", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 7, Description = "Right Touchpad Press 7 SW" },
+            new NoteStruct { Name = "rtp8", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 8, Description = "Right Touchpad Press 8 S" },
+            new NoteStruct { Name = "rtp9", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 9, Description = "Right Touchpad Press 9 SE" },
         };
 
         private class HtcToMidi
@@ -89,6 +130,20 @@ namespace HtcMidi
             private int leftHandAngle;
             private int rightHandAngle;
             private CVRSystem vrPointer;
+
+            // Remember previous direction of palms so we only output events if things change.
+            private int currentLeftHandPalmDir = -1;
+            private int currentRightHandPalmDir = -1;
+
+            // Remember if currently touching or pressing touchpad for left and right controllers
+            // Remember what was touched before, in case user is sliding finger around (no untouch events!)
+            private bool touchingLeftTouchpad = false;
+            private bool touchingRightTouchpad = false;
+            private bool pressingLeftTouchpad = false;
+            private bool pressingRightTouchpad = false;
+            private int leftTouchNoteID = 0;
+            private int rightTouchNoteID = 0;
+            
 
             public HtcToMidi(OutputDevice outDevice, int channelNumber, int fps, ControllerEnablement controllerEnablement, float minX, float maxX, float minY, float maxY, int leftHandAngle, int rightHandAngle)
             {
@@ -131,10 +186,6 @@ namespace HtcMidi
             public void ProcessHtcEvents()
             {
                 InitHtc();
-
-                // Remember previous direction of palms so we only output events if things change.
-                int currentLeftHandPalmDir = -1;
-                int currentRightHandPalmDir = -1;
 
                 // Loop polling for VR events.
                 bool exitLoop = false;
@@ -214,23 +265,50 @@ namespace HtcMidi
                                                         {
                                                             case EVREventType.VREvent_ButtonTouch:
                                                                 {
-                                                                    // TODO: get position of finger on touchpad as additional controller values (e.g. for eye movements)
-                                                                    NoteOn(baseNoteID + NoteID.TouchpadTouchOffset);
+                                                                    if (role == ETrackedControllerRole.LeftHand)
+                                                                    {
+                                                                        touchingLeftTouchpad = true;
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        touchingRightTouchpad = true;
+                                                                    }
                                                                     break;
                                                                 }
                                                             case EVREventType.VREvent_ButtonUntouch:
                                                                 {
-                                                                    NoteOff(baseNoteID + NoteID.TouchpadTouchOffset);
+                                                                    if (role == ETrackedControllerRole.LeftHand)
+                                                                    {
+                                                                        touchingLeftTouchpad = false;
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        touchingRightTouchpad = false;
+                                                                    }
                                                                     break;
                                                                 }
                                                             case EVREventType.VREvent_ButtonPress:
                                                                 {
-                                                                    NoteOn(baseNoteID + NoteID.TouchpadPressOffset);
+                                                                    if (role == ETrackedControllerRole.LeftHand)
+                                                                    {
+                                                                        pressingLeftTouchpad = true;
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        pressingRightTouchpad = true;
+                                                                    }
                                                                     break;
                                                                 }
                                                             case EVREventType.VREvent_ButtonUnpress:
                                                                 {
-                                                                    NoteOff(baseNoteID + NoteID.TouchpadPressOffset);
+                                                                    if (role == ETrackedControllerRole.LeftHand)
+                                                                    {
+                                                                        pressingLeftTouchpad = false;
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        pressingRightTouchpad = false;
+                                                                    }
                                                                     break;
                                                                 }
                                                         }
@@ -279,119 +357,8 @@ namespace HtcMidi
                                 ETrackedControllerRole role = vrPointer.GetControllerRoleForTrackedDeviceIndex(id);
                                 if (role == ETrackedControllerRole.LeftHand || role == ETrackedControllerRole.RightHand)
                                 {
-                                    if (trackedDevicePose.bDeviceIsConnected && trackedDevicePose.bPoseIsValid)
-                                    {
-                                        // Get position of device.
-                                        // TODO: There is lots of rotational data also available that could be used e.g. to rotate hands.
-                                        HmdMatrix34_t vector = trackedDevicePose.mDeviceToAbsoluteTracking;
-                                        int x = 127 - NormalizeControllerValue(vector.m3, minX, maxX);
-                                        int y = 127 - NormalizeControllerValue(vector.m7, minY, maxY);
-
-                                        // Left controller = puppet right hand.
-                                        int deg = MatrixToDegrees(vector, (role == ETrackedControllerRole.LeftHand) ? rightHandAngle : leftHandAngle);
-
-                                        // Work out hand twist position.
-                                        // m9 being negative means palm is facing screen, positive is back of hand facing screen.
-                                        // If m9 is around zero, then m2 postive/negative indicates rotation of hand.
-                                        // We want to normalize to 0 = palm towards screen, 1 = palm down, 2 = palm away from screen, 3 = palm up.
-                                        int palmDir = (role == ETrackedControllerRole.LeftHand) ? NoteID.LeftBase : NoteID.RightBase;
-                                        if (vector.m9 < -0.6)
-                                        {
-                                            palmDir += NoteID.PalmForwardOffset;
-                                        }
-                                        else if (vector.m9 > 0.6)
-                                        {
-                                            palmDir += NoteID.PalmBackwardOffset;
-                                        }
-                                        else if (vector.m2 < 0.0)
-                                        {
-                                            palmDir += NoteID.PalmDownOffset;
-                                        }
-                                        else
-                                        {
-                                            palmDir += NoteID.PalmUpOffset;
-                                        }
-                                        if (role == ETrackedControllerRole.LeftHand)
-                                        {
-                                            if (palmDir != currentLeftHandPalmDir)
-                                            {
-                                                if (currentLeftHandPalmDir >= 0)
-                                                {
-                                                    NoteOff(currentLeftHandPalmDir);
-                                                }
-                                                NoteOn(palmDir);
-                                                currentLeftHandPalmDir = palmDir;
-                                            }
-                                        }
-                                        else
-                                        {
-                                            if (palmDir != currentRightHandPalmDir)
-                                            {
-                                                if (currentRightHandPalmDir >= 0)
-                                                {
-                                                    NoteOff(currentRightHandPalmDir);
-                                                }
-                                                NoteOn(palmDir);
-                                                currentRightHandPalmDir = palmDir;
-                                            }
-
-                                        }
-
-                                        if (fps == 1)
-                                        {
-                                            // The README.md file references this output syntax.
-                                            Debug(((role == ETrackedControllerRole.LeftHand) ? "LEFT " : "RIGHT") + "  x: " + vector.m3 + " (" + x + ")  y: " + vector.m7 + " (" + y + ")");
-
-                                            // Don't get too verbose with both controllers.
-                                            if (role == ETrackedControllerRole.LeftHand)
-                                            {
-                                                // The (X,Y) position of the controller is (m3,m7).
-                                                // The direction the controller is pointing in is Zvec, so atan2(m6,m2) gives is the angle for rotating hands etc.
-                                                Debug("LEFT MATRIX\n"
-                                                    + "   Xvec     Yvec     Zvec     Transpose\n"
-                                                    + "x  m0=" + r(vector.m0) + "  m1=" + r(vector.m1) + "  m2=" + r(vector.m2) + "  m3=" + r(vector.m3) + "\n"
-                                                    + "y  m4=" + r(vector.m4) + "  m5=" + r(vector.m5) + "  m6=" + r(vector.m6) + "  m7=" + r(vector.m7) + "\n"
-                                                    + "z  m8=" + r(vector.m8) + "  m9=" + r(vector.m9) + " m10=" + r(vector.m10) + " m11=" + r(vector.m11));
-                                                Debug(" Rotation = " + MatrixToDegrees(vector, 0));
-                                            }
-                                        }
-
-                                        // Send events for enabled controllers. In calibration mode we restrict to just one controller, which
-                                        // makes rigging in Character Animator easier too.
-                                        // Note: The right controller controls the puppets left hand and vice versa.
-                                        if (role == ETrackedControllerRole.RightHand)
-                                        {
-                                            if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftX)
-                                            {
-                                                Controller(ControllerID.LeftX, x);
-                                            }
-                                            if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftY)
-                                            {
-                                                Controller(ControllerID.LeftY, y);
-                                            }
-                                            if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftHandAngle)
-                                            {
-                                                // MIDI values are 0 to 127, so convert degrees to 0..127 range.
-                                                Controller(ControllerID.LeftRotation, deg * 127 / 360);
-                                            }
-                                        }
-                                        if (role == ETrackedControllerRole.LeftHand)
-                                        {
-                                            if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightX)
-                                            {
-                                                Controller(ControllerID.RightX, x);
-                                            }
-                                            if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightY)
-                                            {
-                                                Controller(ControllerID.RightY, y);
-                                            }
-                                            if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightHandAngle)
-                                            {
-                                                // MIDI values are 0 to 127, so convert degrees to 0..127 range.
-                                                Controller(ControllerID.RightRotation, deg * 127 / 360);
-                                            }
-                                        }
-                                    }
+                                    UpdateTrackpadNotes(controllerState, role);
+                                    UpdateHandPositionsAndAngle(trackedDevicePose, role);
                                 }
                             }
                         }
@@ -402,6 +369,185 @@ namespace HtcMidi
                 }
 
                 CloseHtc();
+            }
+
+            private void UpdateHandPositionsAndAngle(TrackedDevicePose_t trackedDevicePose, ETrackedControllerRole role)
+            {
+                // Process position data of controllers
+                if (trackedDevicePose.bDeviceIsConnected && trackedDevicePose.bPoseIsValid)
+                {
+                    // Get position of device.
+                    // TODO: There is lots of rotational data also available that could be used e.g. to rotate hands.
+                    HmdMatrix34_t vector = trackedDevicePose.mDeviceToAbsoluteTracking;
+                    int x = 127 - NormalizeControllerValue(vector.m3, minX, maxX);
+                    int y = 127 - NormalizeControllerValue(vector.m7, minY, maxY);
+
+                    // Left controller = puppet right hand.
+                    int deg = MatrixToDegrees(vector, (role == ETrackedControllerRole.LeftHand) ? rightHandAngle : leftHandAngle);
+
+                    // Work out hand twist position.
+                    // m9 being negative means palm is facing screen, positive is back of hand facing screen.
+                    // If m9 is around zero, then m2 postive/negative indicates rotation of hand.
+                    // We want to normalize to 0 = palm towards screen, 1 = palm down, 2 = palm away from screen, 3 = palm up.
+                    int palmDir = (role == ETrackedControllerRole.LeftHand) ? NoteID.LeftBase : NoteID.RightBase;
+                    if (vector.m9 < -0.6)
+                    {
+                        palmDir += NoteID.PalmForwardOffset;
+                    }
+                    else if (vector.m9 > 0.6)
+                    {
+                        palmDir += NoteID.PalmBackwardOffset;
+                    }
+                    else if (vector.m2 < 0.0)
+                    {
+                        palmDir += NoteID.PalmDownOffset;
+                    }
+                    else
+                    {
+                        palmDir += NoteID.PalmUpOffset;
+                    }
+                    if (role == ETrackedControllerRole.LeftHand)
+                    {
+                        if (palmDir != currentLeftHandPalmDir)
+                        {
+                            if (currentLeftHandPalmDir >= 0)
+                            {
+                                NoteOff(currentLeftHandPalmDir);
+                            }
+                            NoteOn(palmDir);
+                            currentLeftHandPalmDir = palmDir;
+                        }
+                    }
+                    else
+                    {
+                        if (palmDir != currentRightHandPalmDir)
+                        {
+                            if (currentRightHandPalmDir >= 0)
+                            {
+                                NoteOff(currentRightHandPalmDir);
+                            }
+                            NoteOn(palmDir);
+                            currentRightHandPalmDir = palmDir;
+                        }
+
+                    }
+
+                    if (fps == 1)
+                    {
+                        // The README.md file references this output syntax.
+                        Debug(((role == ETrackedControllerRole.LeftHand) ? "LEFT " : "RIGHT") + "  x: " + vector.m3 + " (" + x + ")  y: " + vector.m7 + " (" + y + ")");
+
+                        // Don't get too verbose with both controllers.
+                        if (role == ETrackedControllerRole.LeftHand)
+                        {
+                            // The (X,Y) position of the controller is (m3,m7).
+                            // The direction the controller is pointing in is Zvec, so atan2(m6,m2) gives is the angle for rotating hands etc.
+                            Debug("LEFT MATRIX\n"
+                                + "   Xvec     Yvec     Zvec     Transpose\n"
+                                + "x  m0=" + r(vector.m0) + "  m1=" + r(vector.m1) + "  m2=" + r(vector.m2) + "  m3=" + r(vector.m3) + "\n"
+                                + "y  m4=" + r(vector.m4) + "  m5=" + r(vector.m5) + "  m6=" + r(vector.m6) + "  m7=" + r(vector.m7) + "\n"
+                                + "z  m8=" + r(vector.m8) + "  m9=" + r(vector.m9) + " m10=" + r(vector.m10) + " m11=" + r(vector.m11));
+                            Debug(" Rotation = " + MatrixToDegrees(vector, 0));
+                        }
+                    }
+
+                    // Send events for enabled controllers. In calibration mode we restrict to just one controller, which
+                    // makes rigging in Character Animator easier too.
+                    // Note: The right controller controls the puppets left hand and vice versa.
+                    if (role == ETrackedControllerRole.RightHand)
+                    {
+                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftX)
+                        {
+                            Controller(ControllerID.LeftX, x);
+                        }
+                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftY)
+                        {
+                            Controller(ControllerID.LeftY, y);
+                        }
+                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftHandAngle)
+                        {
+                            // MIDI values are 0 to 127, so convert degrees to 0..127 range.
+                            Controller(ControllerID.LeftRotation, deg * 127 / 360);
+                        }
+                    }
+                    if (role == ETrackedControllerRole.LeftHand)
+                    {
+                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightX)
+                        {
+                            Controller(ControllerID.RightX, x);
+                        }
+                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightY)
+                        {
+                            Controller(ControllerID.RightY, y);
+                        }
+                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightHandAngle)
+                        {
+                            // MIDI values are 0 to 127, so convert degrees to 0..127 range.
+                            Controller(ControllerID.RightRotation, deg * 127 / 360);
+                        }
+                    }
+                }
+            }
+
+            private void UpdateTrackpadNotes(VRControllerState_t controllerState, ETrackedControllerRole role)
+            {
+
+                // Work out touchpad touch positions, turn notes on/off if anything has changed.
+                // Work out phone keypad position based on x & y (1..9)
+                float x = controllerState.rAxis1.x;
+                float y = controllerState.rAxis1.y;
+                int keyNum;
+                if (y < -0.33f)
+                {
+                    keyNum = (x < -0.33f) ? 1 : (x < 0.33f) ? 2 : 3;
+                }
+                else if (y < 0.33f)
+                {
+                    keyNum = (x < -0.33f) ? 4 : (x < 0.33f) ? 5 : 6;
+                }
+                else
+                {
+                    keyNum = (x < -0.33f) ? 7 : (x < 0.33f) ? 8 : 9;
+                }
+
+                if (role == ETrackedControllerRole.LeftHand)
+                {
+                    // Left controller == puppet right hand
+                    int newNoteID = pressingRightTouchpad ? (NoteID.RightBase + NoteID.TouchpadPressOffset + keyNum)
+                        : touchingRightTouchpad ? (NoteID.RightBase + NoteID.TouchpadTouchOffset + keyNum)
+                        : 0;
+                    if (newNoteID != rightTouchNoteID)
+                    {
+                        if (rightTouchNoteID > 0)
+                        {
+                            NoteOff(rightTouchNoteID);
+                        }
+                        rightTouchNoteID = newNoteID;
+                        if (rightTouchNoteID > 0)
+                        {
+                            NoteOn(rightTouchNoteID);
+                        }
+                    }
+                }
+                else
+                {
+                    // Right controller == puppet left hand
+                    int newNoteID = pressingLeftTouchpad ? (NoteID.LeftBase + NoteID.TouchpadPressOffset + keyNum)
+                        : touchingLeftTouchpad ? (NoteID.LeftBase + NoteID.TouchpadTouchOffset + keyNum)
+                        : 0;
+                    if (newNoteID != leftTouchNoteID)
+                    {
+                        if (leftTouchNoteID > 0)
+                        {
+                            NoteOff(leftTouchNoteID);
+                        }
+                        leftTouchNoteID = newNoteID;
+                        if (leftTouchNoteID > 0)
+                        {
+                            NoteOn(leftTouchNoteID);
+                        }
+                    }
+                }
             }
 
             private string r(float n)
