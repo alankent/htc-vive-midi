@@ -496,7 +496,6 @@ namespace HtcMidi
                     {
                         Thread.Sleep(1000);
                         Debug("RightX Controller");
-                        Thread.Sleep(1000);
                         for (int i = 127; i >= 0; i--)
                         {
                             Controller(ControllerID.RightX, i);
@@ -507,7 +506,6 @@ namespace HtcMidi
                     {
                         Thread.Sleep(1000);
                         Debug("RightY Controller");
-                        Thread.Sleep(1000);
                         for (int i = 0; i <= 127; i++)
                         {
                             Controller(ControllerID.RightY, i);
@@ -518,7 +516,6 @@ namespace HtcMidi
                     {
                         Thread.Sleep(1000);
                         Debug("RightRotation Controller");
-                        Thread.Sleep(1000);
                         for (int i = 0; i <= 127; i++)
                         {
                             Controller(ControllerID.RightRotation, i);
@@ -530,7 +527,6 @@ namespace HtcMidi
                     {
                         Thread.Sleep(1000);
                         Debug("LeftX Controller");
-                        Thread.Sleep(1000);
                         for (int i = 0; i <= 127; i++)
                         {
                             Controller(ControllerID.LeftX, i);
@@ -541,7 +537,6 @@ namespace HtcMidi
                     {
                         Thread.Sleep(1000);
                         Debug("LeftY Controller");
-                        Thread.Sleep(1000);
                         for (int i = 0; i <= 127; i++)
                         {
                             Controller(ControllerID.LeftY, i);
@@ -552,7 +547,6 @@ namespace HtcMidi
                     {
                         Thread.Sleep(1000);
                         Debug("LeftRotation Controller");
-                        Thread.Sleep(1000);
                         for (int i = 0; i <= 127; i++)
                         {
                             Controller(ControllerID.LeftRotation, i);
@@ -564,11 +558,9 @@ namespace HtcMidi
                     {
                         foreach (NoteStruct n in notes)
                         {
-                            Thread.Sleep(1000);
                             Debug(n.Description);
-                            Thread.Sleep(1000);
                             NoteOn(n.NoteID);
-                            Thread.Sleep(2000);
+                            Thread.Sleep(1000);
                             NoteOff(n.NoteID);
                         }
 
@@ -651,103 +643,190 @@ namespace HtcMidi
             }
         }
 
+        private class ParseOptions
+        {
+            private int argNum = 0;
+            private string[] args;
+
+            public ParseOptions(string[] args)
+            {
+                this.args = args;
+            }
+
+            public bool MoreArgs()
+            {
+                return argNum < args.Length;
+            }
+
+            // Always call IsArg() followed by ArgParam()
+            public bool IsArg(string shortForm, string longForm)
+            {
+                bool isArg = (argNum + 1) < args.Length && (args[argNum] == shortForm || args[argNum] == longForm);
+                if (isArg)
+                {
+                    argNum++;
+                }
+                return isArg;
+            }
+
+            public string ArgParam()
+            {
+                return args[argNum++];
+            }
+
+            // Argument without a parameter value.
+            public bool IsFlag(string shortForm, string longForm)
+            {
+                bool isArg = argNum < args.Length && (args[argNum] == shortForm || args[argNum] == longForm);
+                if (isArg)
+                {
+                    argNum++;
+                }
+                return isArg;
+            }
+           }
+
         // Main program.
         static void Main(string[] args)
         {
             Console.WriteLine("MIDI Device Count = " + OutputDevice.DeviceCount);
 
-            if (args.Length != 11)
-            {
-                Usage("Incorrect number of arguments.");
-            }
-
-            // Get the MIDI device number to send messages to
-            if (!Int32.TryParse(args[0], out int outDeviceID) || outDeviceID < 0 || outDeviceID >= OutputDevice.DeviceCount)
-            {
-                Usage("<device-id> must be an integer in the range 0 to " + (OutputDevice.DeviceCount - 1));
-            }
-
-            // Get the MIDI channel number for messages.
-            if (!Int32.TryParse(args[1], out int channelNumber) || channelNumber < 0 || channelNumber >= 16)
-            {
-                Usage("<midi-channel> must be an integer in the range 0 to 15");
-            }
-
-            // Get the frames per second rate (so we send controller events at this speed)
-            if (!Int32.TryParse(args[2], out int fps) || fps < 1 || fps > 100)
-            {
-                Usage("<fps> must be an integer in the range 1 to 100");
-            }
-
-            // Get minX/maxX/minY/maxY.
-            if (!float.TryParse(args[3], out float minX))
-            {
-                Usage("<min-x> must be a float.");
-            }
-            if (!float.TryParse(args[4], out float maxX))
-            {
-                Usage("<max-x> must be a float.");
-            }
-            if (!float.TryParse(args[5], out float minY))
-            {
-                Usage("<min-y> must be a float.");
-            }
-            if (!float.TryParse(args[6], out float maxY))
-            {
-                Usage("<max-y> must be a float.");
-            }
-
-            // Natural left/right hand angles.
-            if (!Int32.TryParse(args[7], out int rha) || rha < 0 || rha >= 360)
-            {
-                Usage("Puppet right hand angle must be an integer in the range 0 to 359");
-            }
-            if (!Int32.TryParse(args[8], out int lha) || lha < 0 || lha >= 360)
-            {
-                Usage("Puppet left hand angle must be an integer in the range 0 to 359");
-            }
-
-            // See if use HTC Vive or synthesized test data.
+            int outDeviceID = OutputDevice.DeviceCount - 1;
+            int channelNumber = 0;
+            int fps = 24;
+            float minX = 0.0F;
+            float maxX = 1.8F;
+            float minY = 0.8F;
+            float maxY = 1.8F;
+            int rha = 220;
+            int lha = 140;
             bool testMode = false;
-            switch (args[9])
+            bool noteSent = false;
+            ControllerEnablement controllerEnablement = ControllerEnablement.All;
+
+            ParseOptions parser = new ParseOptions(args);
+            while (parser.MoreArgs())
             {
-                case "htc-vive": { testMode = false; break; }
-                case "test": { testMode = true; break; }
-                default:
+                if (parser.IsArg("-d", "--device-id"))
+                {
+                    // Get the MIDI device number to send messages to
+                    if (!Int32.TryParse(parser.ArgParam(), out outDeviceID) || outDeviceID < 0 || outDeviceID >= OutputDevice.DeviceCount)
                     {
-                        Usage("<mode> must be one of 'htc-vive' or 'test'.");
-                        break;
+                        Usage("MIDI <device-id> must be an integer in the range 0 to " + (OutputDevice.DeviceCount - 1));
                     }
+                }
+                else if (parser.IsArg("-c", "--channel"))
+                {
+                    // Get the MIDI channel number for messages.
+                    if (!Int32.TryParse(parser.ArgParam(), out channelNumber) || channelNumber < 0 || channelNumber >= 16)
+                    {
+                        Usage("MIDI <channel> must be an integer in the range 0 to 15");
+                    }
+                }
+                else if (parser.IsArg("-f", "--fps"))
+                {
+                    // Get the frames per second rate (so we send controller events at this speed)
+                    if (!Int32.TryParse(parser.ArgParam(), out fps) || fps < 1 || fps > 100)
+                    {
+                        Usage("<fps> must be an integer in the range 1 to 100");
+                    }
+                }
+                else if (parser.IsArg("-x", "--min-x"))
+                {
+                    if (!float.TryParse(parser.ArgParam(), out minX))
+                    {
+                        Usage("<min-x> must be a float.");
+                    }
+                }
+                else if (parser.IsArg("-X", "--max-x"))
+                {
+                    if (!float.TryParse(parser.ArgParam(), out maxX))
+                    {
+                        Usage("<max-x> must be a float.");
+                    }
+                }
+                else if (parser.IsArg("-y", "--min-y"))
+                {
+                    if (!float.TryParse(parser.ArgParam(), out minY))
+                    {
+                        Usage("<min-y> must be a float.");
+                    }
+                }
+                else if (parser.IsArg("-Y", "--max-y"))
+                {
+                    if (!float.TryParse(parser.ArgParam(), out maxY))
+                    {
+                        Usage("<max-y> must be a float.");
+                    }
+                }
+                else if (parser.IsArg("-rha", "--right-hand-angle"))
+                {
+                    // Natural left/right hand angles.
+                    if (!Int32.TryParse(parser.ArgParam(), out rha) || rha < 0 || rha >= 360)
+                    {
+                        Usage("Puppet right hand angle must be an integer in the range 0 to 359");
+                    }
+                }
+                else if (parser.IsArg("-lha", "--left-hand-angle"))
+                {
+                    // Natural left/right hand angles.
+                    if (!Int32.TryParse(parser.ArgParam(), out lha) || lha < 0 || lha >= 360)
+                    {
+                        Usage("Puppet left hand angle must be an integer in the range 0 to 359");
+                    }
+                }
+                else if (parser.IsFlag("-t", "--test"))
+                {
+                    testMode = true;
+                }
+                else if (parser.IsArg("-n", "--note"))
+                {
+                    // Send the selected note.
+                    string arg = parser.ArgParam();
+                    bool found = false;
+                    foreach (NoteStruct n in notes)
+                    {
+                        if (n.Name == arg)
+                        {
+                            found = true;
+                            HtcToMidi htom = new HtcToMidi(new OutputDevice(outDeviceID), channelNumber, fps, ControllerEnablement.None, minX, maxX, minY, maxY, lha, rha);
+                            Console.WriteLine("Sending " + n.Name + " - " + n.Description);
+                            htom.NoteOn(n.NoteID);
+                            noteSent = true;
+                        }
+                    }
+                    if (!found)
+                    {
+                        Usage("Unknown button note.");
+                    }
+                }
+                else if (parser.IsArg("-C", "--controller"))
+                {
+                    // See which controllers to enable. (It is useful to restrict controllers when doing rigging in Character Animator.)
+                    switch (parser.ArgParam())
+                    {
+                        case "all": { controllerEnablement = ControllerEnablement.All; break; }
+                        case "none": { controllerEnablement = ControllerEnablement.None; break; }
+                        case "notes": { controllerEnablement = ControllerEnablement.Notes; break; }
+                        case "lx": { controllerEnablement = ControllerEnablement.LeftX; break; }
+                        case "ly": { controllerEnablement = ControllerEnablement.LeftY; break; }
+                        case "la": { controllerEnablement = ControllerEnablement.LeftHandAngle; break; }
+                        case "rx": { controllerEnablement = ControllerEnablement.RightX; break; }
+                        case "ry": { controllerEnablement = ControllerEnablement.RightY; break; }
+                        case "ra": { controllerEnablement = ControllerEnablement.RightHandAngle; break; }
+                        default: { Usage("Unknown controller name"); break; }
+                    }
+                }
+                else
+                {
+                    Usage("");
+                }
             }
 
-            // See which controllers to enable. (It is useful to restrict controllers when doing rigging in Character Animator.)
-            ControllerEnablement controllerEnablement = ControllerEnablement.All;
-            switch (args[10])
+            // If we sent a note, then our job is done.
+            if (noteSent)
             {
-                case "all": { controllerEnablement = ControllerEnablement.All; break; }
-                case "none": { controllerEnablement = ControllerEnablement.None; break; }
-                case "notes": { controllerEnablement = ControllerEnablement.Notes; break; }
-                case "lx": { controllerEnablement = ControllerEnablement.LeftX; break; }
-                case "ly": { controllerEnablement = ControllerEnablement.LeftY; break; }
-                case "la": { controllerEnablement = ControllerEnablement.LeftHandAngle; break; }
-                case "rx": { controllerEnablement = ControllerEnablement.RightX; break; }
-                case "ry": { controllerEnablement = ControllerEnablement.RightY; break; }
-                case "ra": { controllerEnablement = ControllerEnablement.RightHandAngle; break; }
-                default:
-                    {
-                        foreach (NoteStruct n in notes)
-                        {
-                            if (n.Name == args[10])
-                            {
-                                HtcToMidi htom = new HtcToMidi(new OutputDevice(outDeviceID), channelNumber, fps, ControllerEnablement.None, minX, maxX, minY, maxY, lha, rha);
-                                Console.WriteLine("Sending " + n.Name + " - " + n.Description);
-                                htom.NoteOn(n.NoteID);
-                                return;
-                            }
-                        }
-                        Usage("<mode> must be one of 'all', 'none', 'lx', 'ly', 'la', 'rx', 'ry', 'ra', or a button name.");
-                        break;
-                    }
+                return;
             }
 
             // Connect to the MIDI output device.
@@ -770,15 +849,28 @@ namespace HtcMidi
         private static void Usage(string message)
         {
             Console.WriteLine(message);
-            Console.WriteLine("Usage: HtcMidi.exe <device-id> <midi-channel> <fps> <min-x> <max-x> <min-y> <max-y> <puppet-right-hand-angle> <puppet-left-hand-angle> htc-vive|test all|none|lx|ly|la|rx|ry|ra|<button>");
-            Console.WriteLine("e.g. HtcMidi 1 2 25 0 1.8 0.8 1.6 220 120 test all");
+            Console.WriteLine("Usage: HtcMidi.exe");
+            Console.WriteLine("-d|--device <int>     MIDI device number (max device)");
+            Console.WriteLine("-c|--channel <int>    MIDI channel number (0)");
+            Console.WriteLine("-f|--fps <int>        Frames per sec (24)");
+            Console.WriteLine("-x|--min-x <float>    Min X value (0.0)");
+            Console.WriteLine("-X|--max-x <float>    Max X value (1.8)");
+            Console.WriteLine("-y|--min-y <float>    Min Y value (0.8)");
+            Console.WriteLine("-Y|--max-y <float>    Max Y value (1.8)");
+            Console.WriteLine("-rha|--right-hand-angle <int>   Default angle of puppets right hand (220)");
+            Console.WriteLine("-lha|--left-hand-angle <int>    Default angle of puppets left hand (140)");
+            Console.WriteLine("-t|--test             Generate a selection of synthentic test data (off)");
+            Console.WriteLine("-n|--note <string>    Send a single note for the given button name (off)");
+            Console.WriteLine("-C|--controller all|none|lx|ly|la|rx|ry|ra   Only send specifed controller data (all)");
+            Console.WriteLine("\ne.g. HtcMidi -lha 90 -rha 90 --test");
+            Console.WriteLine("\ne.g. HtcMidi --note ltop   (send left touchpad press)");
             Console.WriteLine("\nAvailable MIDI devices:");
             for (int i = 0; i < OutputDevice.DeviceCount; i++)
             {
                 MidiOutCaps cap = OutputDevice.GetDeviceCapabilities(i);
                 Console.WriteLine("" + i + ": " + cap.name);
             }
-            Console.WriteLine("\nButtons:");
+            Console.WriteLine("\nNote buttons:");
             foreach (NoteStruct n in notes)
             {
                 Console.WriteLine(n.Name + " (" + n.NoteID + ") - " + n.Description);
