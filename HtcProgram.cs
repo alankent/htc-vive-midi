@@ -7,8 +7,6 @@ using System.Collections.Generic;
 
 namespace HtcMidi
 {
-    //private static OutputDeviceDialog outDialog = new OutputDeviceDialog();
-
     class HtcProgram
     {
         // Processing modes (which MIDI events to generate).
@@ -27,9 +25,9 @@ namespace HtcMidi
 
         internal class NoteID
         {
-            // Using Controller range + 10 just to make it less confusing.
-            internal const int LeftBase = 10;
-            internal const int RightBase = 60;
+            // Using typical keyboard ranges so CH can display them nicely.
+            internal const int LeftBase = 24; // C1
+            internal const int RightBase = 60; // C4
 
             // The following are added to the Left/Right Base values.
             internal const int ApplicationMenuButtonOffset = 0;
@@ -37,14 +35,14 @@ namespace HtcMidi
             internal const int GripButtonOffset = 2;
 
             // Palm direction offsets
-            internal const int PalmForwardOffset = 10;
-            internal const int PalmDownOffset = 11;
-            internal const int PalmBackwardOffset = 12;
-            internal const int PalmUpOffset = 13;
+            internal const int PalmForwardOffset = 5;
+            internal const int PalmDownOffset = 6;
+            internal const int PalmBackwardOffset = 7;
+            internal const int PalmUpOffset = 8;
 
             // Touchpad 1-9 (like phone touchpad cells)
-            internal const int TouchpadTouchOffset = 20;
-            internal const int TouchpadPressOffset = 30;
+            internal const int TouchpadTouchOffset = 10;
+            internal const int TouchpadPressOffset = 20;
 
         };
 
@@ -85,8 +83,6 @@ namespace HtcMidi
             new NoteStruct { Name = "ltp8", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 8, Description = "Left Touchpad Press 8 S" },
             new NoteStruct { Name = "ltp9", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 9, Description = "Left Touchpad Press 9 SE" },
 
-
-
             new NoteStruct { Name = "ramb", NoteID = NoteID.RightBase + NoteID.ApplicationMenuButtonOffset, Description = "Right Application Menu Button" },
             new NoteStruct { Name = "rtrb", NoteID = NoteID.RightBase + NoteID.TriggerButtonOffset, Description = "Right Trigger Button" },
             new NoteStruct { Name = "rgrb", NoteID = NoteID.RightBase + NoteID.GripButtonOffset, Description = "Right Grip Button" },
@@ -115,6 +111,11 @@ namespace HtcMidi
             new NoteStruct { Name = "rtp7", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 7, Description = "Right Touchpad Press 7 SW" },
             new NoteStruct { Name = "rtp8", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 8, Description = "Right Touchpad Press 8 S" },
             new NoteStruct { Name = "rtp9", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 9, Description = "Right Touchpad Press 9 SE" },
+        };
+
+        private static string[] noteNames =
+        {
+            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
         };
 
         private class HtcToMidi
@@ -164,7 +165,7 @@ namespace HtcMidi
             {
                 int fullVelocity = 127;
                 outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, fullVelocity));
-                Console.WriteLine("NoteOn " + noteID);
+                Console.WriteLine("NoteOn " + noteID + " " + NoteIDToString(noteID));
             }
 
             // Send a NoteOff MIDI event.
@@ -172,13 +173,19 @@ namespace HtcMidi
             {
                 int zeroVelocity = 0;
                 outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, zeroVelocity));
-                Console.WriteLine("NoteOff " + noteID);
+                Console.WriteLine("NoteOff " + noteID + " " + NoteIDToString(noteID));
+            }
+
+            private static string NoteIDToString(int noteID)
+            {
+                return noteNames[noteID % 12] + (noteID / 12).ToString();
             }
 
             // Send a Controller MIDI event (controller values must be in the range 0 to 127)
             public void Controller(int controllerNumber, int controllerValue)
             {
                 outDevice.Send(new ChannelMessage(ChannelCommand.Controller, channelNumber, controllerNumber, controllerValue));
+                // Don't output by default - its too noisy!
                 //Console.WriteLine("Controller " + controllerNumber + " = " + controllerValue);
             }
 
@@ -835,8 +842,12 @@ namespace HtcMidi
         // Main program.
         static void Main(string[] args)
         {
+            // Defer connecting to MIDI device until we have parsed command line options.
+            HtcToMidi h2m = null;
+
             Console.WriteLine("MIDI Device Count = " + OutputDevice.DeviceCount);
 
+            // Command line options.
             int outDeviceID = OutputDevice.DeviceCount - 1;
             int channelNumber = 0;
             int fps = 24;
@@ -864,10 +875,13 @@ namespace HtcMidi
                 else if (parser.IsArg("-c", "--channel"))
                 {
                     // Get the MIDI channel number for messages.
-                    if (!Int32.TryParse(parser.ArgParam(), out channelNumber) || channelNumber < 0 || channelNumber >= 16)
+                    if (!Int32.TryParse(parser.ArgParam(), out channelNumber) || channelNumber < 1 || channelNumber > 16)
                     {
-                        Usage("MIDI <channel> must be an integer in the range 0 to 15");
+                        Usage("MIDI <channel> must be an integer in the range 1 to 16");
                     }
+
+                    // Humans are told MIDI channel number is 1 to 16, but internally its 0 to 15.
+                    channelNumber--;
                 }
                 else if (parser.IsArg("-f", "--fps"))
                 {
@@ -927,24 +941,18 @@ namespace HtcMidi
                 }
                 else if (parser.IsArg("-n", "--note"))
                 {
-                    // Send the selected note.
                     string arg = parser.ArgParam();
-                    bool found = false;
-                    foreach (NoteStruct n in notes)
+                    int noteID = ParseNoteID(arg);
+
+                    // Great! Send the note!
+                    if (h2m == null)
                     {
-                        if (n.Name == arg)
-                        {
-                            found = true;
-                            HtcToMidi htom = new HtcToMidi(new OutputDevice(outDeviceID), channelNumber, fps, ControllerEnablement.None, minX, maxX, minY, maxY, lha, rha);
-                            Console.WriteLine("Sending " + n.Name + " - " + n.Description);
-                            htom.NoteOn(n.NoteID);
-                            noteSent = true;
-                        }
+                        h2m = ConnectToMidiDevice(outDeviceID, channelNumber, fps, minX, maxX, minY, maxY, rha, lha, controllerEnablement);
                     }
-                    if (!found)
-                    {
-                        Usage("Unknown button note.");
-                    }
+                    h2m.NoteOn(noteID);
+                    Thread.Sleep(2000);
+                    h2m.NoteOff(noteID);
+                    noteSent = true;
                 }
                 else if (parser.IsArg("-C", "--controller"))
                 {
@@ -970,26 +978,99 @@ namespace HtcMidi
             }
 
             // If we sent a note, then our job is done.
-            if (noteSent)
+            if (!noteSent)
             {
-                return;
+                if (h2m == null)
+                {
+                    h2m = ConnectToMidiDevice(outDeviceID, channelNumber, fps, minX, maxX, minY, maxY, rha, lha, controllerEnablement);
+                }
+
+                if (testMode)
+                {
+                    // Generate events showing the limits of all the controls, so can calibrate the settings without having a HTC Vive handy.
+                    h2m.TestLimits();
+                }
+                else
+                {
+                    // Start processing events.
+                    h2m.ProcessHtcEvents();
+                }
+            }
+        }
+
+        private static int ParseNoteID(string arg)
+        {
+            int noteID = -1;
+
+            // Look up button names.
+            foreach (NoteStruct n in notes)
+            {
+                if (n.Name == arg)
+                {
+                    noteID = n.NoteID;
+                }
             }
 
+            // See if a raw note number
+            if (noteID < 0)
+            {
+                if (!Int32.TryParse(arg, out noteID))
+                {
+                    noteID = -1;
+                }
+            }
+
+            // Try to parse "G#3" etc.
+            if (noteID < 0 && arg.Length > 1)
+            {
+                string name;
+                string octave;
+                if (arg.ToCharArray()[1] == '#')
+                {
+                    name = arg.Substring(0, 2);
+                    octave = arg.Substring(2);
+                }
+                else
+                {
+                    name = arg.Substring(0, 1);
+                    octave = arg.Substring(1);
+                }
+
+                if (!Int32.TryParse(octave, out int octaveNum))
+                {
+                    Usage("Failed to parse note name.");
+                }
+
+                int noteNum = -1;
+                for (int i = 0; i < 12; i++)
+                {
+                    if (noteNames[i] == name)
+                    {
+                        noteNum = i;
+                        break;
+                    }
+                }
+                if (noteNum >= 0)
+                {
+                    noteID = octaveNum * 12 + noteNum;
+                }
+            }
+
+            if (noteID < 0 || noteID > 127)
+            {
+                Usage("Unknown note or button name.");
+            }
+
+            return noteID;
+        }
+
+        private static HtcToMidi ConnectToMidiDevice(int outDeviceID, int channelNumber, int fps, float minX, float maxX, float minY, float maxY, int rha, int lha, ControllerEnablement controllerEnablement)
+        {
             // Connect to the MIDI output device.
             Console.WriteLine("Connecting to " + OutputDevice.GetDeviceCapabilities(outDeviceID).name);
             OutputDevice outDevice = new OutputDevice(outDeviceID);
             HtcToMidi h2m = new HtcToMidi(outDevice, channelNumber, fps, controllerEnablement, minX, maxX, minY, maxY, lha, rha);
-
-            if (testMode)
-            {
-                // Generate events showing the limits of all the controls, so can calibrate the settings without having a HTC Vive handy.
-                h2m.TestLimits();
-            }
-            else
-            {
-                // Start processing events.
-                h2m.ProcessHtcEvents();
-            }
+            return h2m;
         }
 
         private static void Usage(string message)
@@ -997,7 +1078,7 @@ namespace HtcMidi
             Console.WriteLine(message);
             Console.WriteLine("Usage: HtcMidi.exe");
             Console.WriteLine("-d|--device <int>     MIDI device number (max device)");
-            Console.WriteLine("-c|--channel <int>    MIDI channel number (0)");
+            Console.WriteLine("-c|--channel <int>    MIDI channel number (1)");
             Console.WriteLine("-f|--fps <int>        Frames per sec (24)");
             Console.WriteLine("-x|--min-x <float>    Min X value (0.0)");
             Console.WriteLine("-X|--max-x <float>    Max X value (1.8)");
