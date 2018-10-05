@@ -147,8 +147,8 @@ namespace HtcMidi
             private bool touchingRightTouchpad = false;
             private bool pressingLeftTouchpad = false;
             private bool pressingRightTouchpad = false;
-            private int leftTouchNoteID = 0;
-            private int rightTouchNoteID = 0;
+            private int leftTouchNoteID = -1;
+            private int rightTouchNoteID = -1;
             
 
             public HtcToMidi(OutputDevice outDevice, int channelNumber, int fps, ControllerEnablement controllerEnablement, float minX, float maxX, float minY, float maxY, int leftHandAngle, int rightHandAngle)
@@ -170,7 +170,20 @@ namespace HtcMidi
             {
                 int fullVelocity = 127;
                 outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, fullVelocity));
-                Console.WriteLine("NoteOn " + noteID + " " + NoteIDToString(noteID));
+
+                string msg = "NoteOn  " + noteID + " " + NoteIDToString(noteID);
+                if (true)
+                {
+                    foreach (NoteStruct n in notes)
+                    {
+                        if (noteID == n.NoteID)
+                        {
+                            msg += "  " + n.Name + "  " + n.Description;
+                        }
+                    }
+                }
+
+                Console.WriteLine(msg);
             }
 
             // Send a NoteOff MIDI event.
@@ -178,7 +191,21 @@ namespace HtcMidi
             {
                 int zeroVelocity = 0;
                 outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, zeroVelocity));
-                Console.WriteLine("NoteOff " + noteID + " " + NoteIDToString(noteID));
+
+                string msg = "NoteOff " + noteID + " " + NoteIDToString(noteID);
+
+                if (true)
+                {
+                    foreach (NoteStruct n in notes)
+                    {
+                        if (noteID == n.NoteID)
+                        {
+                            msg += "  " + n.Name + "  " + n.Description;
+                        }
+                    }
+                }
+
+                Console.WriteLine(msg);
             }
 
             // Send a Controller MIDI event (controller values must be in the range 0 to 127)
@@ -226,7 +253,8 @@ namespace HtcMidi
                                         if (role == ETrackedControllerRole.LeftHand || role == ETrackedControllerRole.RightHand)
                                         {
                                             // Left controller generates puppet right hand triggers.
-                                            int baseNoteID = (role == ETrackedControllerRole.LeftHand) ? NoteID.RightBase : NoteID.LeftBase;
+                                            bool isPuppetLeftHand = role == ETrackedControllerRole.RightHand;
+                                            int baseNoteID = isPuppetLeftHand ? NoteID.LeftBase : NoteID.RightBase;
 
                                             switch ((EVRButtonId)pEvent.data.controller.button)
                                             {
@@ -272,7 +300,7 @@ namespace HtcMidi
                                                         {
                                                             case EVREventType.VREvent_ButtonTouch:
                                                                 {
-                                                                    if (role == ETrackedControllerRole.LeftHand)
+                                                                    if (isPuppetLeftHand)
                                                                     {
                                                                         touchingLeftTouchpad = true;
                                                                     }
@@ -284,7 +312,7 @@ namespace HtcMidi
                                                                 }
                                                             case EVREventType.VREvent_ButtonUntouch:
                                                                 {
-                                                                    if (role == ETrackedControllerRole.LeftHand)
+                                                                    if (isPuppetLeftHand)
                                                                     {
                                                                         touchingLeftTouchpad = false;
                                                                     }
@@ -296,7 +324,7 @@ namespace HtcMidi
                                                                 }
                                                             case EVREventType.VREvent_ButtonPress:
                                                                 {
-                                                                    if (role == ETrackedControllerRole.LeftHand)
+                                                                    if (isPuppetLeftHand)
                                                                     {
                                                                         pressingLeftTouchpad = true;
                                                                     }
@@ -308,7 +336,7 @@ namespace HtcMidi
                                                                 }
                                                             case EVREventType.VREvent_ButtonUnpress:
                                                                 {
-                                                                    if (role == ETrackedControllerRole.LeftHand)
+                                                                    if (isPuppetLeftHand)
                                                                     {
                                                                         pressingLeftTouchpad = false;
                                                                     }
@@ -364,8 +392,10 @@ namespace HtcMidi
                                 ETrackedControllerRole role = vrPointer.GetControllerRoleForTrackedDeviceIndex(id);
                                 if (role == ETrackedControllerRole.LeftHand || role == ETrackedControllerRole.RightHand)
                                 {
-                                    UpdateTrackpadNotes(controllerState, role);
-                                    UpdateHandPositionsAndAngle(trackedDevicePose, role);
+                                    // The puppet's left hand is the right controller.
+                                    bool isPuppetLeftHand = role == ETrackedControllerRole.RightHand;
+                                    UpdateTrackpadNotes(controllerState, isPuppetLeftHand);
+                                    UpdateHandPositionsAndAngle(trackedDevicePose, isPuppetLeftHand);
                                 }
                             }
                         }
@@ -378,7 +408,7 @@ namespace HtcMidi
                 CloseHtc();
             }
 
-            private void UpdateHandPositionsAndAngle(TrackedDevicePose_t trackedDevicePose, ETrackedControllerRole role)
+            private void UpdateHandPositionsAndAngle(TrackedDevicePose_t trackedDevicePose, bool isPuppetLeftHand)
             {
                 // Process position data of controllers
                 if (trackedDevicePose.bDeviceIsConnected && trackedDevicePose.bPoseIsValid)
@@ -390,30 +420,53 @@ namespace HtcMidi
                     int y = 127 - NormalizeControllerValue(vector.m7, minY, maxY);
 
                     // Left controller = puppet right hand.
-                    int deg = MatrixToDegrees(vector, (role == ETrackedControllerRole.LeftHand) ? rightHandAngle : leftHandAngle);
+                    int deg = MatrixToDegrees(vector, isPuppetLeftHand ? leftHandAngle : rightHandAngle);
 
                     // Work out hand twist position.
                     // m9 being negative means palm is facing screen, positive is back of hand facing screen.
-                    // If m9 is around zero, then m2 postive/negative indicates rotation of hand.
+                    // m8 (for puppet left hand) is negative means palm down (thumb to screen), positive palm up (no thumb)
                     // We want to normalize to 0 = palm towards screen, 1 = palm down, 2 = palm away from screen, 3 = palm up.
-                    int palmDir = (role == ETrackedControllerRole.LeftHand) ? NoteID.LeftBase : NoteID.RightBase;
-                    if (vector.m9 < -0.6)
+                    int palmDir = isPuppetLeftHand ? NoteID.LeftBase : NoteID.RightBase;
+
+                    // Decide if m8 or m9 is more significant
+                    if (Math.Abs(vector.m8) > Math.Abs(vector.m9))
                     {
-                        palmDir += NoteID.PalmForwardOffset;
-                    }
-                    else if (vector.m9 > 0.6)
-                    {
-                        palmDir += NoteID.PalmBackwardOffset;
-                    }
-                    else if (vector.m2 < 0.0)
-                    {
-                        palmDir += NoteID.PalmDownOffset;
+                        if (vector.m8 > 0.0)
+                        {
+                            if (isPuppetLeftHand)
+                            {
+                                palmDir += NoteID.PalmUpOffset;
+                            }
+                            else
+                            {
+                                palmDir += NoteID.PalmDownOffset;
+                            }
+                        }
+                        else
+                        {
+                            if (isPuppetLeftHand)
+                            {
+                                palmDir += NoteID.PalmDownOffset;
+                            }
+                            else
+                            {
+                                palmDir += NoteID.PalmUpOffset;
+                            }
+                        }
                     }
                     else
                     {
-                        palmDir += NoteID.PalmUpOffset;
+                        if (vector.m9 > 0.0)
+                        {
+                            palmDir += NoteID.PalmBackwardOffset;
+                        }
+                        else
+                        {
+                            palmDir += NoteID.PalmForwardOffset;
+                        }
                     }
-                    if (role == ETrackedControllerRole.LeftHand)
+
+                    if (isPuppetLeftHand)
                     {
                         if (palmDir != currentLeftHandPalmDir)
                         {
@@ -442,10 +495,10 @@ namespace HtcMidi
                     if (fps == 1)
                     {
                         // The README.md file references this output syntax.
-                        Debug(((role == ETrackedControllerRole.LeftHand) ? "LEFT " : "RIGHT") + "  x: " + vector.m3 + " (" + x + ")  y: " + vector.m7 + " (" + y + ")");
+                        Debug((isPuppetLeftHand ? "PUPPET LEFT " : "PUPPET RIGHT") + "  x: " + vector.m3 + " (" + x + ")  y: " + vector.m7 + " (" + y + ")");
 
                         // Don't get too verbose with both controllers.
-                        if (role == ETrackedControllerRole.LeftHand)
+                        if (isPuppetLeftHand)
                         {
                             // The (X,Y) position of the controller is (m3,m7).
                             // The direction the controller is pointing in is Zvec, so atan2(m6,m2) gives is the angle for rotating hands etc.
@@ -461,7 +514,7 @@ namespace HtcMidi
                     // Send events for enabled controllers. In calibration mode we restrict to just one controller, which
                     // makes rigging in Character Animator easier too.
                     // Note: The right controller controls the puppets left hand and vice versa.
-                    if (role == ETrackedControllerRole.RightHand)
+                    if (isPuppetLeftHand)
                     {
                         if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftX)
                         {
@@ -477,7 +530,7 @@ namespace HtcMidi
                             Controller(ControllerID.LeftRotation, deg * 127 / 360);
                         }
                     }
-                    if (role == ETrackedControllerRole.LeftHand)
+                    else
                     {
                         if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightX)
                         {
@@ -496,41 +549,83 @@ namespace HtcMidi
                 }
             }
 
-            private void UpdateTrackpadNotes(VRControllerState_t controllerState, ETrackedControllerRole role)
+            private void UpdateTrackpadNotes(VRControllerState_t controllerState, bool isPuppetLeftHand)
             {
 
                 // Work out touchpad touch positions, turn notes on/off if anything has changed.
                 // Work out phone keypad position based on x & y (1..9)
-                float x = controllerState.rAxis1.x;
-                float y = controllerState.rAxis1.y;
+                float x = controllerState.rAxis0.x;
+                float y = controllerState.rAxis0.y;
+
+                /*
+                Debug("a0=" + controllerState.rAxis0.x
+                    + "a1=" + controllerState.rAxis1.x
+                    + "a2=" + controllerState.rAxis2.x
+                    + "a3=" + controllerState.rAxis3.x
+                    + "a4=" + controllerState.rAxis4.x
+                    );
+                    */
+
                 int keyNum;
-                if (y < -0.33f)
+                /* Dividing touch pad into 4 squares like Rubix cube - but diagonals are less accurate because touchpad is round!
+                if (y > 0.5f)
                 {
-                    keyNum = (x < -0.33f) ? 1 : (x < 0.33f) ? 2 : 3;
+                    keyNum = (x < -0.5f) ? 1 : (x < 0.5f) ? 2 : 3;
                 }
-                else if (y < 0.33f)
+                else if (y > -0.5f)
                 {
-                    keyNum = (x < -0.33f) ? 4 : (x < 0.33f) ? 5 : 6;
+                    keyNum = (x < -0.5f) ? 4 : (x < 0.5f) ? 5 : 6;
                 }
                 else
                 {
-                    keyNum = (x < -0.33f) ? 7 : (x < 0.33f) ? 8 : 9;
+                    keyNum = (x < -0.5f) ? 7 : (x < 0.5f) ? 8 : 9;
+                }
+                */
+
+                // Get angle and distance from center, since trackpad is circular
+                double distance = Math.Sqrt(x * x + y * y);
+                if (distance < 0.5f)
+                {
+                    keyNum = 5; // Centroid
+                }
+                else
+                {
+                    double radians = Math.Atan2(y, x);
+                    double deg = radians * (180.0 / Math.PI);
+                    if (deg < 0.0) deg += 360;
+                    // deg is 0..360 for left, 90 up, 270 down, 0 right.
+                    // We have 8 sectors N, NW, W, SW, etc, each is 45 degrees. So -22.5 to 22.5 degress is East.
+                    int sector = (int)((deg + 22.5) / 45.0);
+                    //Debug("r=" + radians + " d=" + deg + " s=" + sector);
+                    switch (sector)
+                    {
+                        default: keyNum = 6; break; // E (can be 0 or 8)
+                        case 1: keyNum = 3; break; // NE
+                        case 2: keyNum = 2; break; // N
+                        case 3: keyNum = 1; break; // NW
+                        case 4: keyNum = 4; break; // W
+                        case 5: keyNum = 7; break; // SW
+                        case 6: keyNum = 8; break; // S
+                        case 7: keyNum = 9; break; // SE
+                    }
                 }
 
-                if (role == ETrackedControllerRole.LeftHand)
+                if (!isPuppetLeftHand)
                 {
+                    //Debug("TOUCH x=" + x + "  y=" + y + "  keynum=" + keyNum);
+
                     // Left controller == puppet right hand
                     int newNoteID = pressingRightTouchpad ? (NoteID.RightBase + NoteID.TouchpadPressOffset + keyNum)
                         : touchingRightTouchpad ? (NoteID.RightBase + NoteID.TouchpadTouchOffset + keyNum)
-                        : 0;
+                        : -1;
                     if (newNoteID != rightTouchNoteID)
                     {
-                        if (rightTouchNoteID > 0)
+                        if (rightTouchNoteID >= 0)
                         {
                             NoteOff(rightTouchNoteID);
                         }
                         rightTouchNoteID = newNoteID;
-                        if (rightTouchNoteID > 0)
+                        if (rightTouchNoteID >= 0)
                         {
                             NoteOn(rightTouchNoteID);
                         }
@@ -541,15 +636,15 @@ namespace HtcMidi
                     // Right controller == puppet left hand
                     int newNoteID = pressingLeftTouchpad ? (NoteID.LeftBase + NoteID.TouchpadPressOffset + keyNum)
                         : touchingLeftTouchpad ? (NoteID.LeftBase + NoteID.TouchpadTouchOffset + keyNum)
-                        : 0;
+                        : -1;
                     if (newNoteID != leftTouchNoteID)
                     {
-                        if (leftTouchNoteID > 0)
+                        if (leftTouchNoteID >= 0)
                         {
                             NoteOff(leftTouchNoteID);
                         }
                         leftTouchNoteID = newNoteID;
-                        if (leftTouchNoteID > 0)
+                        if (leftTouchNoteID >= 0)
                         {
                             NoteOn(leftTouchNoteID);
                         }
@@ -850,7 +945,7 @@ namespace HtcMidi
             // Command line options.
             int outDeviceID = OutputDevice.DeviceCount - 1;
             int channelNumber = 0;
-            int fps = 24;
+            int fps = 8;
             float minX = 0.0F;
             float maxX = 1.8F;
             float minY = 0.8F;
@@ -1079,7 +1174,7 @@ namespace HtcMidi
             Console.WriteLine("Usage: HtcMidi.exe");
             Console.WriteLine("-d|--device <int>     MIDI device number (max device)");
             Console.WriteLine("-c|--channel <int>    MIDI channel number (1)");
-            Console.WriteLine("-f|--fps <int>        Frames per sec (24)");
+            Console.WriteLine("-f|--fps <int>        Frames per sec (8)");
             Console.WriteLine("-x|--min-x <float>    Min X value (0.0)");
             Console.WriteLine("-X|--max-x <float>    Max X value (1.8)");
             Console.WriteLine("-y|--min-y <float>    Min Y value (0.8)");

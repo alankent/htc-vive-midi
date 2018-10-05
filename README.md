@@ -167,3 +167,6 @@ This code is currently experimental - use at own risk.
 This may be better as a GUI with buttons to control things, but I my
 knowledge of C# is pretty minimal, so I stuck with a command line tool.
 
+For my "Sam" puppet, I used the following;
+
+HtcMidi.exe -rha 260 -lha 100 --min-y 0.2 -f 8
