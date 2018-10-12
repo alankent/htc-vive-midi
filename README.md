@@ -1,13 +1,15 @@
 HTC Vive Controller to MIDI
 ===========================
 
-This Windows command line utility (written in C#) reads from a pair of [HTC Vive](https://www.vive.com/us/) hand controllers and sends [Adobe Character Animator](https://www.adobe.com/products/character-animator.html) MIDI events for buttons clicks (as MIDI notes) and positional data (as MIDI controller values). This allows you to use body movements to control both arms in parallel during recordings (instead of using draggers and mouse). See this [quick demo video](https://youtu.be/ovXXki5kWu4) for more information.
+This Windows command line utility (written in C#) reads from a [HTC Vive](https://www.vive.com/us/) visor and pair of hand controllers and sends [Adobe Character Animator](https://www.adobe.com/products/character-animator.html) MIDI events for buttons clicks (as MIDI notes) and positional data (as MIDI controller values). This allows you to use body movements to control both arms in parallel during recordings (instead of using draggers and mouse). See this [quick demo video](https://youtu.be/ovXXki5kWu4) for more information.
 
-Currently the headset is not used - just the hand controllers. There is also no support for additional Vive trackers, which would be nice to attach to legs etc for controlling more of the body. These could be added, but are not supported at this stage.
+Currently the headset and hand controllers are used. (The headset is still a challenge as I don't project any image to the headset screen, so you need to keep it off your eyes to see what is going on. It slips down a lot for me during recordings still.) There is no support for additional Vive trackers at this stage, which would be nice to attach to legs etc for controlling more of the body, or as a possible alternative to using the headset. (E.g. I might attach a controller to a head band.)
 
 This utility is currently provided as source code only. Its really intended for developers who want to take the tool further. It is released under MIT license for this purpose.
 
-I believe other VR headsets (e.g. Oculus) also have APIs, so it should be possible to adapt this code for those devices as well, but warning: this code is not very elegant. I built it as a quick proof of concept, not production code.
+I believe other VR headsets (e.g. Oculus) also have APIs, so it should be possible to adapt this code for those devices as well. I used the "openvr" toolkit, so there is a chance it will work with Oculus.
+
+Warning: this code is proof of concept, not production code.
 
 ## Puppet Setup
 
@@ -20,6 +22,12 @@ I normally create triggers for different eye expressions (angry, sad, surprised)
 I then associate the left and right touchpads (more below) so one controls the mouth, the other controls the eyes. I currently divide the touchpad into 9 zones (N, NE, E, SE etc plus center), numbered like a phone keypad (1 to 9). Using the touchpad you can only make one of the 9 selections at a time, so putting all mouth positions on one touchpad and all eye expressions on the other works well for me.
 
 Note: you can touch or press the touchpad, so you can have two forms of angry (e.g. press harder for extra angry). I have used "N" (up) for raised eyebrows (surprised) and "S" (down) for angry (lowered eye brows). I have not used all 9 positions yet. Having reminders like these help when doing a recording since you have to do both hands at once.
+
+### Head
+
+For the head there is rotation and movement. For rotation, assuming the head is "independent" in Chraracter Animator, I add a Transform layer to the head and bind the rotation angle of the visor to the rotation transformation property. Once you do this, the webcam can no longer move the head. The Transform overrides the Face behavior. So you design a puppet for webcam or this environment - not both at once. (You can of course share the artwork file.)
+
+I then put another Transform on a sublayer around the neck of the puppet so X/Y movement moves the neck. This acts like a Character Animator "dragger". You cannot put it on the whole body - you need to find a sublayer that when moved moves the rest of the puppet. I used the collar of the shirt, which just happend to be a separate layer from the rest of the shirt because it had to go behind the neck.
 
 ### Hands
 
@@ -43,7 +51,7 @@ In addition to the 4 palm rotations (down, towards screen, up, away from screen)
 
 I then put the 4 children of "Left Hand Positions" into a swapset and assign triggers. I then create a second swapset for the children of "Left Palm Down" for the open and closed hand positions. I then add the children of the other 3 palm rotations to the same triggers. That is, you end up with a single "Open/Close" trigger swap set with two children ("open" and "closed") but "open" is connected to "Left Palm Down Open", "Left Palm Forwards Open", "Left Palm Up Open", and "Left Palm Backwards Open". The palm rotation trigger then picks the right palm to use, and the trigger picks the open/closed within the palm view.
 
-Note: The trigger can detect how far the trigger is squeezed, so theoretically it should be possible to have 3 or 4 open to closed hand positions (e.g. open, pointing and closed) that depend on how far you squeeze the trigger.
+Note: The trigger can detect how far the trigger is squeezed, so theoretically it should be possible to have 3 or 4 open to closed hand positions (e.g. open, pointing, and closed) that depend on how far you squeeze the trigger.
 
 Finally, for the hand position controls to work, you need to add a Transform behavior to each of the two the hands. Doing so will disable draggers (they stop working when there is a Transform behavior at present). The HTC Vive controllers send out a continuous stream of X/Y position events that this utility converts to MIDI controller events. These X and Y position events get bound to the the hand Transform behaviors (describe later). You also need to bind the Rotation property of the Transform up as well so the angle you hold the controllers affects the angle of the puppet hands. This allows you to wave by flexing your wrist.
 
@@ -95,7 +103,7 @@ There are a number of different command line arguments. (Please check out the ut
         -lha|--left-hand-angle <int>    Default angle of puppets left hand (140)
         -t|--test             Generate a selection of synthentic test data (off)
         -n|--note <string>    Send a single note for the given note/button (off)
-        -C|--controller all|none|lx|ly|la|rx|ry|ra   Only send specifed controller data (all)
+        -e|--enable all|notes|hx|hy|ha|lx|ly|la|rx|ry|ra   Only send specifed MIDI data (all)
         
         e.g. HtcMidi -lha 90 -rha 90 --test
              HtcMidi --note lamb   (send left application menu press)
@@ -174,10 +182,9 @@ The most likely arguments you will use are as follows
 
 To work out what the min and max values are, start the utility up with `--fps 1`. At one frame per second it outputs more detailed debugging information so you can see the X and Y values. Point your arms up, down, left, and right. Write down the minimum and maximum X and Y values you see. These are the values you then provide to `--min-x` etc. Use ^C to abort the utility and start it up again with new X/Y bounding box values. You *cannot* go beyond these values, so feel free to use values slight beyond what you observe, so you can stretch further if needed. You could just use 0 and 2, but it reduces the accuracy of position data as you end up only using a subset of the available 0 to 127 integer coordinate space.
 
-
 ### Hand Rotation Angles
 
-`-lha` and `-rha` tell the utility the starting angle of the puppet's left and right hands in degress in the artwork. (Zero is up, 180 is down.) In order to compute the rotation value to use, the default hand angle in the artwork must be known. If you get it wrong, the hands will always look slight bent.
+`-lha` and `-rha` tell the utility the starting angle of the puppet's left and right hands in degress in the artwork. (Zero is up, 180 is down.) In order to compute the rotation value to use, the default hand angle in the artwork must be known. If you get it wrong, the hands will always look slight bent. (Currently the head angle is hard coded to be zero assuming puppets are the right way up by default.)
 
 The right hand of the puppet defaults to 220 (40 degress from down) and the left 140 (40 degress the other direction from down). If your puppet default position has hands directly out sideways, you should use 270 and 90 instead.
 
@@ -214,13 +221,13 @@ Once you have bound the trigger up, you can flip back to "Performance" mode in t
 
 ### Binding Position and Rotation Data
 
-Binding the Position X, Position Y, and Rotation properties of the hand Transform behaviors is a little tricky. There is no "Note ID" field you can type MIDI note numbers into, plus I am using "MIDI Control" events (not note events) as well. Control events in MIDI are for numeric data like volume levels.
+Binding the Position X, Position Y, and Rotation properties of the headset and hand Transform behaviors is a little tricky. There is no "Note ID" field you can type MIDI note numbers into, plus I am using "MIDI Control" events (not note events). Control events in MIDI are for numeric data like volume levels.
 
-Because the utility sends a constant stream of Position X, Position Y, and Rotation data (even when putting the controllers on my desk, the slightest movement would register as a change in position), you have to use the `--controller` command line option to only enable one control event at a time.
+Because the utility sends a constant stream of Position X, Position Y, and Rotation data (unless they are perfectly not moving), the slightest movement registers as a change in position), you have to use the `--enable` command line option to only enable one control MIDI event at a time.
 
-Go into the Character Animator control panel. If not done already, drag the Position X, Position Y, and Rotation behavior properties for the two hand Transforms into the panel. Go into "Layout" mode. Click on the first control to bind, e.g. the puppet left hand Position X control to select it. Then start up the utility with `--controller lx`. You must have the HTC Vive controllers turned on and available to get this data. When an event arrives, the color of the control will change and the MIDI information will be displayed on the control as well. Quit the utility (using ^C) to stop sending event data and deselect the control.
+Go into the Character Animator control panel. If not done already, drag the Position X, Position Y, and Rotation behavior properties for the head Transform two hand Transforms into the panel. Go into "Layout" mode. Click on the first control to bind, e.g. the puppet left hand Position X control to select it. Then start up the utility with `--enable lx`. You must have the HTC Vive controllers turned on and available to get this data. When an event arrives, the color of the control will change and the MIDI information will be displayed on the control as well. Quit the utility (using ^C) to stop sending event data and deselect the control.
 
-Repeat for all of the 6 controls to be bound (`lx`, `ly`, `la`, `rx`, `ry`, `ra`). You need to exit and restart the utility for each.
+Repeat for all of the controls to be bound (`hx`, `hy`, `ha`, `lx`, `ly`, `la`, `rx`, `ry`, `ra`). You need to exit and restart the utility for each.
 
 ### Calibrating Position and Rotation Data
 
@@ -228,16 +235,19 @@ Once you have the bindings done, you need to adjust the ranges on the controls i
 
 I selected the following values for one of my puppets.
 
- - Right Position X: -500 to 3500
- - Right Position Y: -2700 to 300
+ - Head Position X: -2100 to 1200
+ - Head Position Y: -750 to 1500
+ - Head Rotation: 0 to 360
+ - Right Position X: -770 to 2900
+ - Right Position Y: -3000 to 1500
  - Right Rotation: 0 to 360
- - Left Position X: -3500 to 500
- - Left Position Y: -2700 to 500
+ - Left Position X: -4700 to 350
+ - Left Position Y: -3000 to 1500
  - Left Rotation: 0 to 360
 
-These numbers change per puppet because the starting position of the hands in the artwork matters. The X range for both hands should be the same (4000 in the above case), but the default resting position of my puppet hands are around 3000 apart, hence the offsets. Similarly the Y values, the default resting position of the hands was quite low on the page (and Y increases down the page).
+These numbers change per puppet because the starting position of the hands in the artwork matters. I hold the hand controllers relative to the puppet body (hand outstretched, hand beside body) during calibration, but calibration is one of the more painful tasks at present. It is different for every puppet.
 
-Once you have it all set up, run the utility with the `--test` option to generate synthetic data that moves both hands around in a circle, computing the rotation values as well.
+Once you have it all set up, run the utility with the `--test` option to generate synthetic data that moves both hands around in a circle, computing the rotation values as well. These hand movements might not be correctly calibrated for your puppet - its more just to make sure things move when they should.
 
 Getting this calibration right I found was the most time consuming part of the whole experience.
 
@@ -263,6 +273,6 @@ This code is currently experimental - use at own risk. It is released under MIT 
 
 For my "Sam" puppet, I used the following;
 
-      HtcMidi.exe -rha 260 -lha 100 --min-y 0.2
+      HtcMidi.exe -rha 260 -lha 120 --min-y 0.2
 
 Want to discuss? Submit a ticket to this GitHub or find me in the [Adobe Character Animator forums](https://forums.adobe.com/community/character-animator).

@@ -7,11 +7,117 @@ using System.Collections.Generic;
 
 namespace HtcMidi
 {
-    class HtcProgram
+    // Simplified MIDI API (notes on/off events, and controller value change events).
+    // Supports supressing particular events for binding and debugging purposes.
+    internal class Midi
     {
-        // Processing modes (which MIDI events to generate).
-        private enum ControllerEnablement { None, All, Notes, LeftX, LeftY, RightX, RightY, LeftHandAngle, RightHandAngle };
+        private OutputDevice outDevice;
+        private int channelNumber;
+        private Dictionary<int, int> lastControllerValue = new Dictionary<int, int>();
+        private bool notesEnabled = true;
+        private HashSet<int> enabledControllers = null;
 
+        // Constructor.
+        public Midi(int midiDeviceID, int channelNumber)
+        {
+            Console.WriteLine("Connecting to " + OutputDevice.GetDeviceCapabilities(midiDeviceID).name);
+            this.outDevice = new OutputDevice(midiDeviceID);
+            this.channelNumber = channelNumber;
+        }
+
+        // Send a NoteOn MIDI event.
+        public void NoteOn(int noteID)
+        {
+            if (notesEnabled)
+            {
+                int fullVelocity = 127;
+                outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, fullVelocity));
+
+                string msg = "NoteOn  " + noteID + " " + HtcMidiNotes.NoteIDToString(noteID);
+                if (HtcMidiNotes.LookupNoteMetadata(noteID, out HtcMidiNotes.NoteMetadata n))
+                {
+                    msg += "  " + n.Name + "  " + n.Description;
+                }
+                Console.WriteLine(msg);
+            }
+        }
+
+        // Send a NoteOff MIDI event.
+        public void NoteOff(int noteID)
+        {
+            if (notesEnabled)
+            {
+                int zeroVelocity = 0;
+                outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, zeroVelocity));
+
+                string msg = "NoteOff " + noteID + " " + HtcMidiNotes.NoteIDToString(noteID);
+                if (HtcMidiNotes.LookupNoteMetadata(noteID, out HtcMidiNotes.NoteMetadata n))
+                {
+                    msg += "  " + n.Name + "  " + n.Description;
+                }
+                Console.WriteLine(msg);
+            }
+        }
+
+        // Send a Controller MIDI event (controller values must be in the range 0 to 127)
+        public void Controller(int controllerNumber, int controllerValue)
+        {
+            if (enabledControllers == null || enabledControllers.Contains(controllerNumber))
+            {
+                // Avoid sending the same value again, to reduce the number of controller value update messages sent.
+                // TODO: Could optimize further by only sending values that are more than say 2 different to the previous value.
+                if (!lastControllerValue.TryGetValue(controllerNumber, out int prevValue) || controllerValue != prevValue)
+                {
+                    outDevice.Send(new ChannelMessage(ChannelCommand.Controller, channelNumber, controllerNumber, controllerValue));
+                    lastControllerValue[controllerNumber] = controllerValue;
+                    // Uncomment this if you want noisy debugging information.
+                    //Console.WriteLine("Controller " + controllerNumber + " = " + controllerValue);
+                }
+            }
+        }
+
+        // Enable all notes and controller messages (the default)
+        public void EnableAll()
+        {
+            this.notesEnabled = true;
+            this.enabledControllers = null;
+        }
+
+        // Disable all notes and controller messages
+        public void DisableAll()
+        {
+            this.notesEnabled = false;
+            this.enabledControllers = new HashSet<int>();
+        }
+
+        // Enable notes, disable all controllers.
+        public void EnableNotes()
+        {
+            this.notesEnabled = true;
+        }
+
+        // Enable only specified controller event (discard notes as well)
+        public void EnableController(int controllerNumber)
+        {
+            this.enabledControllers.Add(controllerNumber);
+        }
+
+        // Return true if notes are enabled.
+        public bool NotesAreEnabled()
+        {
+            return this.notesEnabled;
+        }
+
+        // Return true if controller is enabled.
+        public bool ControllerIsEnabled(int controllerNumber)
+        {
+            return enabledControllers == null || enabledControllers.Contains(controllerNumber);
+        }
+    }
+
+    // Useful MIDI note and controller constants.
+    internal class HtcMidiNotes
+    {
         // MIDI Controller numbers to use for X, Y, Rotation events.
         internal class ControllerID
         {
@@ -21,8 +127,12 @@ namespace HtcMidi
             internal const int RightX = 50;
             internal const int RightY = 51;
             internal const int RightRotation = 52;
+            internal const int HeadX = 90; // 100 got swallowed by something
+            internal const int HeadY = 91;
+            internal const int HeadRotation = 92;
         };
 
+        // Note IDs to use for various trigger events.
         internal class NoteID
         {
             // Using typical keyboard ranges so CH can display them nicely.
@@ -46,899 +156,731 @@ namespace HtcMidi
 
         };
 
-        internal class NoteStruct
+        // Used for table of note information for better diagnostics etc.
+        internal class NoteMetadata
         {
             public string Name { get; set; }
             public int NoteID { get; set; }
             public string Description { get; set; }
         };
-        private static NoteStruct[] notes = new NoteStruct[] 
+
+        // Big table of note metadata for all notes triggers we use.
+        internal static NoteMetadata[] noteMetadata = new NoteMetadata[]
         {
-            new NoteStruct { Name = "lamb", NoteID = NoteID.LeftBase + NoteID.ApplicationMenuButtonOffset, Description = "Left Application Menu Button" },
-            new NoteStruct { Name = "ltrb", NoteID = NoteID.LeftBase + NoteID.TriggerButtonOffset, Description = "Left Trigger Button" },
-            new NoteStruct { Name = "lgrb", NoteID = NoteID.LeftBase + NoteID.GripButtonOffset, Description = "Left Grip Button" },
+            new NoteMetadata { Name = "lamb", NoteID = NoteID.LeftBase + NoteID.ApplicationMenuButtonOffset, Description = "Left Application Menu Button" },
+            new NoteMetadata { Name = "ltrb", NoteID = NoteID.LeftBase + NoteID.TriggerButtonOffset, Description = "Left Trigger Button" },
+            new NoteMetadata { Name = "lgrb", NoteID = NoteID.LeftBase + NoteID.GripButtonOffset, Description = "Left Grip Button" },
 
-            new NoteStruct { Name = "lnpf", NoteID = NoteID.LeftBase + NoteID.PalmForwardOffset, Description = "Left Palm Forwards" },
-            new NoteStruct { Name = "lnpd", NoteID = NoteID.LeftBase + NoteID.PalmDownOffset, Description = "Left Palm Down" },
-            new NoteStruct { Name = "lnpb", NoteID = NoteID.LeftBase + NoteID.PalmBackwardOffset, Description = "Left Palm Backwards" },
-            new NoteStruct { Name = "lnpu", NoteID = NoteID.LeftBase + NoteID.PalmUpOffset, Description = "Left Palm Up" },
+            new NoteMetadata { Name = "lnpf", NoteID = NoteID.LeftBase + NoteID.PalmForwardOffset, Description = "Left Palm Forwards" },
+            new NoteMetadata { Name = "lnpd", NoteID = NoteID.LeftBase + NoteID.PalmDownOffset, Description = "Left Palm Down" },
+            new NoteMetadata { Name = "lnpb", NoteID = NoteID.LeftBase + NoteID.PalmBackwardOffset, Description = "Left Palm Backwards" },
+            new NoteMetadata { Name = "lnpu", NoteID = NoteID.LeftBase + NoteID.PalmUpOffset, Description = "Left Palm Up" },
 
-            new NoteStruct { Name = "ltt1", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 1, Description = "Left Touchpad Touch 1 NW" },
-            new NoteStruct { Name = "ltt2", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 2, Description = "Left Touchpad Touch 2 N" },
-            new NoteStruct { Name = "ltt3", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 3, Description = "Left Touchpad Touch 3 NE" },
-            new NoteStruct { Name = "ltt4", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 4, Description = "Left Touchpad Touch 4 W" },
-            new NoteStruct { Name = "ltt5", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 5, Description = "Left Touchpad Touch 5 0" },
-            new NoteStruct { Name = "ltt6", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 6, Description = "Left Touchpad Touch 6 E" },
-            new NoteStruct { Name = "ltt7", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 7, Description = "Left Touchpad Touch 7 SW" },
-            new NoteStruct { Name = "ltt8", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 8, Description = "Left Touchpad Touch 8 S" },
-            new NoteStruct { Name = "ltt9", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 9, Description = "Left Touchpad Touch 9 SE" },
+            new NoteMetadata { Name = "ltt1", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 1, Description = "Left Touchpad Touch 1 NW" },
+            new NoteMetadata { Name = "ltt2", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 2, Description = "Left Touchpad Touch 2 N" },
+            new NoteMetadata { Name = "ltt3", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 3, Description = "Left Touchpad Touch 3 NE" },
+            new NoteMetadata { Name = "ltt4", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 4, Description = "Left Touchpad Touch 4 W" },
+            new NoteMetadata { Name = "ltt5", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 5, Description = "Left Touchpad Touch 5 0" },
+            new NoteMetadata { Name = "ltt6", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 6, Description = "Left Touchpad Touch 6 E" },
+            new NoteMetadata { Name = "ltt7", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 7, Description = "Left Touchpad Touch 7 SW" },
+            new NoteMetadata { Name = "ltt8", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 8, Description = "Left Touchpad Touch 8 S" },
+            new NoteMetadata { Name = "ltt9", NoteID = NoteID.LeftBase + NoteID.TouchpadTouchOffset + 9, Description = "Left Touchpad Touch 9 SE" },
 
-            new NoteStruct { Name = "ltp1", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 1, Description = "Left Touchpad Press 1 NW" },
-            new NoteStruct { Name = "ltp2", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 2, Description = "Left Touchpad Press 2 N" },
-            new NoteStruct { Name = "ltp3", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 3, Description = "Left Touchpad Press 3 NE" },
-            new NoteStruct { Name = "ltp4", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 4, Description = "Left Touchpad Press 4 W" },
-            new NoteStruct { Name = "ltp5", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 5, Description = "Left Touchpad Press 5 0" },
-            new NoteStruct { Name = "ltp6", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 6, Description = "Left Touchpad Press 6 E" },
-            new NoteStruct { Name = "ltp7", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 7, Description = "Left Touchpad Press 7 SW" },
-            new NoteStruct { Name = "ltp8", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 8, Description = "Left Touchpad Press 8 S" },
-            new NoteStruct { Name = "ltp9", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 9, Description = "Left Touchpad Press 9 SE" },
+            new NoteMetadata { Name = "ltp1", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 1, Description = "Left Touchpad Press 1 NW" },
+            new NoteMetadata { Name = "ltp2", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 2, Description = "Left Touchpad Press 2 N" },
+            new NoteMetadata { Name = "ltp3", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 3, Description = "Left Touchpad Press 3 NE" },
+            new NoteMetadata { Name = "ltp4", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 4, Description = "Left Touchpad Press 4 W" },
+            new NoteMetadata { Name = "ltp5", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 5, Description = "Left Touchpad Press 5 0" },
+            new NoteMetadata { Name = "ltp6", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 6, Description = "Left Touchpad Press 6 E" },
+            new NoteMetadata { Name = "ltp7", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 7, Description = "Left Touchpad Press 7 SW" },
+            new NoteMetadata { Name = "ltp8", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 8, Description = "Left Touchpad Press 8 S" },
+            new NoteMetadata { Name = "ltp9", NoteID = NoteID.LeftBase + NoteID.TouchpadPressOffset + 9, Description = "Left Touchpad Press 9 SE" },
 
-            new NoteStruct { Name = "ramb", NoteID = NoteID.RightBase + NoteID.ApplicationMenuButtonOffset, Description = "Right Application Menu Button" },
-            new NoteStruct { Name = "rtrb", NoteID = NoteID.RightBase + NoteID.TriggerButtonOffset, Description = "Right Trigger Button" },
-            new NoteStruct { Name = "rgrb", NoteID = NoteID.RightBase + NoteID.GripButtonOffset, Description = "Right Grip Button" },
+            new NoteMetadata { Name = "ramb", NoteID = NoteID.RightBase + NoteID.ApplicationMenuButtonOffset, Description = "Right Application Menu Button" },
+            new NoteMetadata { Name = "rtrb", NoteID = NoteID.RightBase + NoteID.TriggerButtonOffset, Description = "Right Trigger Button" },
+            new NoteMetadata { Name = "rgrb", NoteID = NoteID.RightBase + NoteID.GripButtonOffset, Description = "Right Grip Button" },
 
-            new NoteStruct { Name = "rnpf", NoteID = NoteID.RightBase + NoteID.PalmForwardOffset, Description = "Right Palm Forwards" },
-            new NoteStruct { Name = "rnpd", NoteID = NoteID.RightBase + NoteID.PalmDownOffset, Description = "Right Palm Down" },
-            new NoteStruct { Name = "rnpb", NoteID = NoteID.RightBase + NoteID.PalmBackwardOffset, Description = "Right Palm Backwards" },
-            new NoteStruct { Name = "rnpu", NoteID = NoteID.RightBase + NoteID.PalmUpOffset, Description = "Right Palm Up" },
+            new NoteMetadata { Name = "rnpf", NoteID = NoteID.RightBase + NoteID.PalmForwardOffset, Description = "Right Palm Forwards" },
+            new NoteMetadata { Name = "rnpd", NoteID = NoteID.RightBase + NoteID.PalmDownOffset, Description = "Right Palm Down" },
+            new NoteMetadata { Name = "rnpb", NoteID = NoteID.RightBase + NoteID.PalmBackwardOffset, Description = "Right Palm Backwards" },
+            new NoteMetadata { Name = "rnpu", NoteID = NoteID.RightBase + NoteID.PalmUpOffset, Description = "Right Palm Up" },
 
-            new NoteStruct { Name = "rtt1", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 1, Description = "Right Touchpad Touch 1 NW" },
-            new NoteStruct { Name = "rtt2", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 2, Description = "Right Touchpad Touch 2 N" },
-            new NoteStruct { Name = "rtt3", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 3, Description = "Right Touchpad Touch 3 NE" },
-            new NoteStruct { Name = "rtt4", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 4, Description = "Right Touchpad Touch 4 W" },
-            new NoteStruct { Name = "rtt5", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 5, Description = "Right Touchpad Touch 5 0" },
-            new NoteStruct { Name = "rtt6", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 6, Description = "Right Touchpad Touch 6 E" },
-            new NoteStruct { Name = "rtt7", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 7, Description = "Right Touchpad Touch 7 SW" },
-            new NoteStruct { Name = "rtt8", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 8, Description = "Right Touchpad Touch 8 S" },
-            new NoteStruct { Name = "rtt9", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 9, Description = "Right Touchpad Touch 9 SE" },
+            new NoteMetadata { Name = "rtt1", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 1, Description = "Right Touchpad Touch 1 NW" },
+            new NoteMetadata { Name = "rtt2", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 2, Description = "Right Touchpad Touch 2 N" },
+            new NoteMetadata { Name = "rtt3", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 3, Description = "Right Touchpad Touch 3 NE" },
+            new NoteMetadata { Name = "rtt4", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 4, Description = "Right Touchpad Touch 4 W" },
+            new NoteMetadata { Name = "rtt5", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 5, Description = "Right Touchpad Touch 5 0" },
+            new NoteMetadata { Name = "rtt6", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 6, Description = "Right Touchpad Touch 6 E" },
+            new NoteMetadata { Name = "rtt7", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 7, Description = "Right Touchpad Touch 7 SW" },
+            new NoteMetadata { Name = "rtt8", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 8, Description = "Right Touchpad Touch 8 S" },
+            new NoteMetadata { Name = "rtt9", NoteID = NoteID.RightBase + NoteID.TouchpadTouchOffset + 9, Description = "Right Touchpad Touch 9 SE" },
 
-            new NoteStruct { Name = "rtp1", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 1, Description = "Right Touchpad Press 1 NW" },
-            new NoteStruct { Name = "rtp2", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 2, Description = "Right Touchpad Press 2 N" },
-            new NoteStruct { Name = "rtp3", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 3, Description = "Right Touchpad Press 3 NE" },
-            new NoteStruct { Name = "rtp4", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 4, Description = "Right Touchpad Press 4 W" },
-            new NoteStruct { Name = "rtp5", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 5, Description = "Right Touchpad Press 5 0" },
-            new NoteStruct { Name = "rtp6", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 6, Description = "Right Touchpad Press 6 E" },
-            new NoteStruct { Name = "rtp7", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 7, Description = "Right Touchpad Press 7 SW" },
-            new NoteStruct { Name = "rtp8", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 8, Description = "Right Touchpad Press 8 S" },
-            new NoteStruct { Name = "rtp9", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 9, Description = "Right Touchpad Press 9 SE" },
+            new NoteMetadata { Name = "rtp1", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 1, Description = "Right Touchpad Press 1 NW" },
+            new NoteMetadata { Name = "rtp2", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 2, Description = "Right Touchpad Press 2 N" },
+            new NoteMetadata { Name = "rtp3", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 3, Description = "Right Touchpad Press 3 NE" },
+            new NoteMetadata { Name = "rtp4", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 4, Description = "Right Touchpad Press 4 W" },
+            new NoteMetadata { Name = "rtp5", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 5, Description = "Right Touchpad Press 5 0" },
+            new NoteMetadata { Name = "rtp6", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 6, Description = "Right Touchpad Press 6 E" },
+            new NoteMetadata { Name = "rtp7", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 7, Description = "Right Touchpad Press 7 SW" },
+            new NoteMetadata { Name = "rtp8", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 8, Description = "Right Touchpad Press 8 S" },
+            new NoteMetadata { Name = "rtp9", NoteID = NoteID.RightBase + NoteID.TouchpadPressOffset + 9, Description = "Right Touchpad Press 9 SE" },
         };
 
-        private static string[] noteNames =
+        // Human readable names for MIDI notes. MIDI starts octaves from C (not A).
+        internal static string[] noteNames =
         {
             "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
         };
 
-        private static string NoteIDToString(int noteID)
+        // Convert a note ID (like 24) to a note name (like "C2")
+        internal static string NoteIDToString(int noteID)
         {
             return noteNames[noteID % 12] + (noteID / 12).ToString();
         }
 
-        private class HtcToMidi
+        // Find note metadata given the noteID.
+        internal static bool LookupNoteMetadata(int noteID, out NoteMetadata dest)
         {
-            private OutputDevice outDevice;
-            private int channelNumber;
-            private int fps;
-            private ControllerEnablement controllerEnablement;
-            private float minX;
-            private float maxX;
-            private float minY;
-            private float maxY;
-            private int leftHandAngle;
-            private int rightHandAngle;
-            private CVRSystem vrPointer;
-
-            // Remember previous direction of palms so we only output events if things change.
-            private int currentLeftHandPalmDir = -1;
-            private int currentRightHandPalmDir = -1;
-
-            // Remember if currently touching or pressing touchpad for left and right controllers
-            // Remember what was touched before, in case user is sliding finger around (no untouch events!)
-            private bool touchingLeftTouchpad = false;
-            private bool touchingRightTouchpad = false;
-            private bool pressingLeftTouchpad = false;
-            private bool pressingRightTouchpad = false;
-            private int leftTouchNoteID = -1;
-            private int rightTouchNoteID = -1;
-            
-
-            public HtcToMidi(OutputDevice outDevice, int channelNumber, int fps, ControllerEnablement controllerEnablement, float minX, float maxX, float minY, float maxY, int leftHandAngle, int rightHandAngle)
+            foreach (NoteMetadata n in noteMetadata)
             {
-                this.outDevice = outDevice;
-                this.channelNumber = channelNumber;
-                this.fps = fps;
-                this.controllerEnablement = controllerEnablement;
-                this.minX = minX;
-                this.maxX = maxX;
-                this.minY = minY;
-                this.maxY = maxY;
-                this.leftHandAngle = leftHandAngle;
-                this.rightHandAngle = rightHandAngle;
-            }
-
-            // Send a NoteOn MIDI event.
-            public void NoteOn(int noteID)
-            {
-                int fullVelocity = 127;
-                outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, fullVelocity));
-
-                string msg = "NoteOn  " + noteID + " " + NoteIDToString(noteID);
-                if (true)
+                if (noteID == n.NoteID)
                 {
-                    foreach (NoteStruct n in notes)
-                    {
-                        if (noteID == n.NoteID)
-                        {
-                            msg += "  " + n.Name + "  " + n.Description;
-                        }
-                    }
+                    dest = n;
+                    return true;
+                }
+            }
+            dest = null;
+            return false;
+        }
+    }
+
+    internal struct SceneDimensions
+    {
+        public float minX;
+        public float minY;
+        public float maxX;
+        public float maxY;
+
+        public SceneDimensions(float minX, float minY, float maxX, float maxY)
+        {
+            this.minX = minX;
+            this.minY = minY;
+            this.maxX = maxX;
+            this.maxY = maxY;
+        }
+    }
+
+    // Code for processing events of a hand controller (left and right).
+    internal class Visor
+    {
+        private Midi midi;
+        private int headAngle;
+        private int baseNoteID;
+        private SceneDimensions sceneDimensions;
+        private bool verbose;
+
+        // Constructor.
+        public Visor(Midi midi, int headAngle, int baseNoteID, SceneDimensions sceneDimensions, bool verbose)
+        {
+            this.midi = midi;
+            this.headAngle = headAngle;
+            this.baseNoteID = baseNoteID;
+            this.sceneDimensions = sceneDimensions;
+            this.verbose = verbose;
+        }
+
+        // Given controller data, work out which way the palm is facing to fire the required trigger.
+        internal void UpdateHeadPositionAndAngle(TrackedDevicePose_t trackedDevicePose)
+        {
+            // Process position data of controllers
+            if (trackedDevicePose.bDeviceIsConnected && trackedDevicePose.bPoseIsValid)
+            {
+                // Get position of device.
+                HmdMatrix34_t vector = trackedDevicePose.mDeviceToAbsoluteTracking;
+                int x = 127 - NormalizeControllerValue(vector.m3, sceneDimensions.minX, sceneDimensions.maxX);
+                int y = 127 - NormalizeControllerValue(vector.m7, sceneDimensions.minY, sceneDimensions.maxY);
+
+                // Work out the head tilt.
+                int deg = MatrixToDegrees(vector, headAngle);
+                
+                // Debugging output.
+                if (verbose)
+                {
+                    // The README.md file references this output syntax.
+                    Console.WriteLine("HEAD" + "  x: " + vector.m3 + " (" + x + ")  y: " + vector.m7 + " (" + y + ")");
+
+                    // Don't get too verbose with both controllers.
+                    // The (X,Y) position of the controller is (m3,m7).
+                    // The direction the controller is pointing in is Zvec, so atan2(m6,m2) gives is the angle for rotating hands etc.
+                    Console.WriteLine("HEAD MATRIX\n"
+                        + "   Xvec     Yvec     Zvec     Transpose\n"
+                        + "x  m0=" + r(vector.m0) + "  m1=" + r(vector.m1) + "  m2=" + r(vector.m2) + "  m3=" + r(vector.m3) + "\n"
+                        + "y  m4=" + r(vector.m4) + "  m5=" + r(vector.m5) + "  m6=" + r(vector.m6) + "  m7=" + r(vector.m7) + "\n"
+                        + "z  m8=" + r(vector.m8) + "  m9=" + r(vector.m9) + " m10=" + r(vector.m10) + " m11=" + r(vector.m11));
+                    Console.WriteLine(" Rotation = " + MatrixToDegrees(vector, 0));
                 }
 
-                Console.WriteLine(msg);
+                // Head position and rotation MIDI events.
+                midi.Controller(HtcMidiNotes.ControllerID.HeadX, x);
+                midi.Controller(HtcMidiNotes.ControllerID.HeadY, y);
+                // MIDI values are 0 to 127, so convert degrees to 0..127 range.
+                midi.Controller(HtcMidiNotes.ControllerID.HeadRotation, deg * 127 / 360);
             }
+        }
 
-            // Send a NoteOff MIDI event.
-            public void NoteOff(int noteID)
+        // Round the float off to percentages, for display in debugging messages.
+        private string r(float n)
+        {
+            return ((int)(n * 100.0)).ToString().PadLeft(4, ' ');
+        }
+
+        // Convert controller vector data to Adobe Character Animator degrees for rotations.
+        private int MatrixToDegrees(HmdMatrix34_t vector, int deltaAngle)
+        {
+            float deltaX = vector.m1;
+            float deltaY = vector.m5;
+            double rad = Math.Atan2(deltaY, deltaX); // In radians
+            int deg = (int)(rad * (180.0 / Math.PI));
+            deg = deg - 90;
+            deg = deg - deltaAngle;
+            while (deg < 0) deg += 360;
+            while (deg >= 360) deg -= 360;
+            return deg;
+        }
+
+        // Normalize controller value from 0 to 127 based on min/max values for that controller.
+        private int NormalizeControllerValue(float n, double min, double max)
+        {
+            int num = (int)(((n - min) / (max - min)) * 127);
+            if (num < 0) num = 0;
+            if (num > 127) num = 127;
+            return num;
+        }
+    }
+
+    // Code for processing events of a hand controller (left and right).
+    internal class HandController
+    {
+        private Midi midi;
+        private int handAngle;
+        private int baseNoteID;
+        private SceneDimensions sceneDimensions;
+        private int currentPalmDir = -1;
+        private bool touchingTouchpad = false;
+        private bool pressingTouchpad = false;
+        private int touchNoteID = -1;
+        private bool isPuppetLeftHand;
+        private bool verbose;
+
+        // Constructor.
+        public HandController(Midi midi, int handAngle, int baseNoteID, SceneDimensions sceneDimensions, bool isPuppetLeftHand, bool verbose)
+        {
+            this.midi = midi;
+            this.handAngle = handAngle;
+            this.baseNoteID = baseNoteID;
+            this.sceneDimensions = sceneDimensions;
+            this.isPuppetLeftHand = isPuppetLeftHand;
+            this.verbose = verbose;
+        }
+
+        // Once main loop determines if an event is for the left or right hand, it dispatches to the hand controller to process.
+        public void ProcessEvent(VREvent_t pEvent)
+        {
+            switch ((EVRButtonId)pEvent.data.controller.button)
             {
-                int zeroVelocity = 0;
-                outDevice.Send(new ChannelMessage(ChannelCommand.NoteOn, channelNumber, noteID, zeroVelocity));
-
-                string msg = "NoteOff " + noteID + " " + NoteIDToString(noteID);
-
-                if (true)
-                {
-                    foreach (NoteStruct n in notes)
-                    {
-                        if (noteID == n.NoteID)
-                        {
-                            msg += "  " + n.Name + "  " + n.Description;
-                        }
-                    }
-                }
-
-                Console.WriteLine(msg);
-            }
-
-            // Send a Controller MIDI event (controller values must be in the range 0 to 127)
-            public void Controller(int controllerNumber, int controllerValue)
-            {
-                outDevice.Send(new ChannelMessage(ChannelCommand.Controller, channelNumber, controllerNumber, controllerValue));
-                // Don't output by default - its too noisy!
-                //Console.WriteLine("Controller " + controllerNumber + " = " + controllerValue);
-            }
-
-            // Main processing loop.
-            public void ProcessHtcEvents()
-            {
-                InitHtc();
-
-                // Loop polling for VR events.
-                bool exitLoop = false;
-                while (!exitLoop)
-                {
-                    VREvent_t pEvent = new VREvent_t();
-                    
-                    // Process all events the have built up (returns false when all events done).
-                    while (vrPointer.PollNextEvent(ref pEvent, (uint)Marshal.SizeOf(pEvent)))
+                case EVRButtonId.k_EButton_ApplicationMenu:
                     {
                         switch ((EVREventType)pEvent.eventType)
                         {
-                            case EVREventType.VREvent_Quit:
-                            case EVREventType.VREvent_ProcessQuit:
-                            case EVREventType.VREvent_QuitAborted_UserPrompt:
-                            case EVREventType.VREvent_QuitAcknowledged:
+                            case EVREventType.VREvent_ButtonPress:
                                 {
-                                    exitLoop = true;
+                                    midi.NoteOn(baseNoteID + HtcMidiNotes.NoteID.ApplicationMenuButtonOffset);
                                     break;
                                 }
-
-                            case EVREventType.VREvent_ButtonPress:
                             case EVREventType.VREvent_ButtonUnpress:
+                                {
+                                    midi.NoteOff(baseNoteID + HtcMidiNotes.NoteID.ApplicationMenuButtonOffset);
+                                    break;
+                                }
+                        }
+                        break;
+                    }
+                case EVRButtonId.k_EButton_SteamVR_Trigger:
+                    {
+                        // TODO: The trigger can actually be a controller as well (tracks how far trigger is squeezed)
+
+                        switch ((EVREventType)pEvent.eventType)
+                        {
+                            case EVREventType.VREvent_ButtonPress:
+                                {
+                                    midi.NoteOn(baseNoteID + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                                    break;
+                                }
+                            case EVREventType.VREvent_ButtonUnpress:
+                                {
+                                    midi.NoteOff(baseNoteID + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                                    break;
+                                }
+                        }
+                        break;
+                    }
+                case EVRButtonId.k_EButton_SteamVR_Touchpad:
+                    {
+                        switch ((EVREventType)pEvent.eventType)
+                        {
                             case EVREventType.VREvent_ButtonTouch:
+                                {
+                                    touchingTouchpad = true;
+                                    break;
+                                }
                             case EVREventType.VREvent_ButtonUntouch:
                                 {
-                                    ETrackedDeviceClass trackedDeviceClass = vrPointer.GetTrackedDeviceClass(pEvent.trackedDeviceIndex);
-                                    if (trackedDeviceClass == ETrackedDeviceClass.Controller)
-                                    {
-                                        ETrackedControllerRole role = vrPointer.GetControllerRoleForTrackedDeviceIndex(pEvent.trackedDeviceIndex);
-                                        if (role == ETrackedControllerRole.LeftHand || role == ETrackedControllerRole.RightHand)
-                                        {
-                                            // Left controller generates puppet right hand triggers.
-                                            bool isPuppetLeftHand = role == ETrackedControllerRole.RightHand;
-                                            int baseNoteID = isPuppetLeftHand ? NoteID.LeftBase : NoteID.RightBase;
-
-                                            switch ((EVRButtonId)pEvent.data.controller.button)
-                                            {
-                                                case EVRButtonId.k_EButton_ApplicationMenu:
-                                                    {
-                                                        switch ((EVREventType)pEvent.eventType)
-                                                        {
-                                                            case EVREventType.VREvent_ButtonPress:
-                                                                {
-                                                                    NoteOn(baseNoteID + NoteID.ApplicationMenuButtonOffset);
-                                                                    break;
-                                                                }
-                                                            case EVREventType.VREvent_ButtonUnpress:
-                                                                {
-                                                                    NoteOff(baseNoteID + NoteID.ApplicationMenuButtonOffset);
-                                                                    break;
-                                                                }
-                                                        }
-                                                        break;
-                                                    }
-                                                case EVRButtonId.k_EButton_SteamVR_Trigger:
-                                                    {
-                                                        // TODO: The trigger can actually be a controller as well (tracks how far trigger is squeezed)
-
-                                                        switch ((EVREventType)pEvent.eventType)
-                                                        {
-                                                            case EVREventType.VREvent_ButtonPress:
-                                                                {
-                                                                    NoteOn(baseNoteID + NoteID.TriggerButtonOffset);
-                                                                    break;
-                                                                }
-                                                            case EVREventType.VREvent_ButtonUnpress:
-                                                                {
-                                                                    NoteOff(baseNoteID + NoteID.TriggerButtonOffset);
-                                                                    break;
-                                                                }
-                                                        }
-                                                        break;
-                                                    }
-                                                case EVRButtonId.k_EButton_SteamVR_Touchpad:
-                                                    {
-                                                        switch ((EVREventType)pEvent.eventType)
-                                                        {
-                                                            case EVREventType.VREvent_ButtonTouch:
-                                                                {
-                                                                    if (isPuppetLeftHand)
-                                                                    {
-                                                                        touchingLeftTouchpad = true;
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        touchingRightTouchpad = true;
-                                                                    }
-                                                                    break;
-                                                                }
-                                                            case EVREventType.VREvent_ButtonUntouch:
-                                                                {
-                                                                    if (isPuppetLeftHand)
-                                                                    {
-                                                                        touchingLeftTouchpad = false;
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        touchingRightTouchpad = false;
-                                                                    }
-                                                                    break;
-                                                                }
-                                                            case EVREventType.VREvent_ButtonPress:
-                                                                {
-                                                                    if (isPuppetLeftHand)
-                                                                    {
-                                                                        pressingLeftTouchpad = true;
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        pressingRightTouchpad = true;
-                                                                    }
-                                                                    break;
-                                                                }
-                                                            case EVREventType.VREvent_ButtonUnpress:
-                                                                {
-                                                                    if (isPuppetLeftHand)
-                                                                    {
-                                                                        pressingLeftTouchpad = false;
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        pressingRightTouchpad = false;
-                                                                    }
-                                                                    break;
-                                                                }
-                                                        }
-                                                        break;
-                                                    }
-                                                case EVRButtonId.k_EButton_Grip:
-                                                    {
-                                                        switch ((EVREventType)pEvent.eventType)
-                                                        {
-                                                            case EVREventType.VREvent_ButtonPress:
-                                                                {
-                                                                    NoteOn(baseNoteID + NoteID.GripButtonOffset);
-                                                                    break;
-                                                                }
-                                                            case EVREventType.VREvent_ButtonUnpress:
-                                                                {
-                                                                    NoteOff(baseNoteID + NoteID.GripButtonOffset);
-                                                                    break;
-                                                                }
-                                                        }
-                                                        break;
-                                                    }
-                                            }
-                                        }
-                                    }
+                                    touchingTouchpad = false;
+                                    break;
+                                }
+                            case EVREventType.VREvent_ButtonPress:
+                                {
+                                    pressingTouchpad = true;
+                                    break;
+                                }
+                            case EVREventType.VREvent_ButtonUnpress:
+                                {
+                                    pressingTouchpad = false;
                                     break;
                                 }
                         }
+                        break;
                     }
-                 
-                    // Get tracking information for left and right controllers.
-                    for (uint id = 0; id < OpenVR.k_unMaxTrackedDeviceCount; id++)
+                case EVRButtonId.k_EButton_Grip:
                     {
-                        ETrackedDeviceClass trackedDeviceClass = vrPointer.GetTrackedDeviceClass(id);
-                        if (trackedDeviceClass == ETrackedDeviceClass.Controller && vrPointer.IsTrackedDeviceConnected(id))
+                        switch ((EVREventType)pEvent.eventType)
                         {
-                            // TODO: There is also "GenericTracker" instead of "Controller" for the Vive tracking devices.
-
-                            // Get positional data of controllers to see if should send new Controller events.
-                            TrackedDevicePose_t trackedDevicePose = new TrackedDevicePose_t();
-                            VRControllerState_t controllerState = new VRControllerState_t();
-
-                            if (vrPointer.GetControllerStateWithPose(ETrackingUniverseOrigin.TrackingUniverseStanding, id, ref controllerState, (uint)Marshal.SizeOf(controllerState), ref trackedDevicePose))
-                            {
-                                // TODO: For now we only do left and right controllers - not headset, not additional trackers.
-                                ETrackedControllerRole role = vrPointer.GetControllerRoleForTrackedDeviceIndex(id);
-                                if (role == ETrackedControllerRole.LeftHand || role == ETrackedControllerRole.RightHand)
+                            case EVREventType.VREvent_ButtonPress:
                                 {
-                                    // The puppet's left hand is the right controller.
-                                    bool isPuppetLeftHand = role == ETrackedControllerRole.RightHand;
-                                    UpdateTrackpadNotes(controllerState, isPuppetLeftHand);
-                                    UpdateHandPositionsAndAngle(trackedDevicePose, isPuppetLeftHand);
+                                    midi.NoteOn(baseNoteID + HtcMidiNotes.NoteID.GripButtonOffset);
+                                    break;
                                 }
-                            }
+                            case EVREventType.VREvent_ButtonUnpress:
+                                {
+                                    midi.NoteOff(baseNoteID + HtcMidiNotes.NoteID.GripButtonOffset);
+                                    break;
+                                }
                         }
+                        break;
                     }
-
-                    // Send events no faster than requested frames per second
-                    Thread.Sleep(1000 / fps);
-                }
-
-                CloseHtc();
             }
+        }
 
-            private void UpdateHandPositionsAndAngle(TrackedDevicePose_t trackedDevicePose, bool isPuppetLeftHand)
+        // Given controller data, work out which way the palm is facing to fire the required trigger.
+        internal void UpdateHandPositionsAndAngle(TrackedDevicePose_t trackedDevicePose)
+        {
+            // Process position data of controllers
+            if (trackedDevicePose.bDeviceIsConnected && trackedDevicePose.bPoseIsValid)
             {
-                // Process position data of controllers
-                if (trackedDevicePose.bDeviceIsConnected && trackedDevicePose.bPoseIsValid)
+                // Get position of device.
+                HmdMatrix34_t vector = trackedDevicePose.mDeviceToAbsoluteTracking;
+                int x = 127 - NormalizeControllerValue(vector.m3, sceneDimensions.minX, sceneDimensions.maxX);
+                int y = 127 - NormalizeControllerValue(vector.m7, sceneDimensions.minY, sceneDimensions.maxY);
+
+                // Left controller = puppet right hand.
+                int deg = MatrixToDegrees(vector, handAngle);
+
+                // Work out hand twist position.
+                // We want to normalize to 0 = palm towards screen, 1 = palm down, 2 = palm away from screen, 3 = palm up.
+                // m9 being negative means palm is facing screen, positive is back of hand facing screen.
+                // m8 (for puppet left hand) is negative means palm down (thumb to screen), positive palm up (no thumb)
+                int palmDir = baseNoteID;
+
+                // Decide if m8 or m9 is more significant
+                if (Math.Abs(vector.m8) > Math.Abs(vector.m9))
                 {
-                    // Get position of device.
-                    // TODO: There is lots of rotational data also available that could be used e.g. to rotate hands.
-                    HmdMatrix34_t vector = trackedDevicePose.mDeviceToAbsoluteTracking;
-                    int x = 127 - NormalizeControllerValue(vector.m3, minX, maxX);
-                    int y = 127 - NormalizeControllerValue(vector.m7, minY, maxY);
-
-                    // Left controller = puppet right hand.
-                    int deg = MatrixToDegrees(vector, isPuppetLeftHand ? leftHandAngle : rightHandAngle);
-
-                    // Work out hand twist position.
-                    // m9 being negative means palm is facing screen, positive is back of hand facing screen.
-                    // m8 (for puppet left hand) is negative means palm down (thumb to screen), positive palm up (no thumb)
-                    // We want to normalize to 0 = palm towards screen, 1 = palm down, 2 = palm away from screen, 3 = palm up.
-                    int palmDir = isPuppetLeftHand ? NoteID.LeftBase : NoteID.RightBase;
-
-                    // Decide if m8 or m9 is more significant
-                    if (Math.Abs(vector.m8) > Math.Abs(vector.m9))
+                    if (vector.m8 > 0.0)
                     {
-                        if (vector.m8 > 0.0)
-                        {
-                            if (isPuppetLeftHand)
-                            {
-                                palmDir += NoteID.PalmUpOffset;
-                            }
-                            else
-                            {
-                                palmDir += NoteID.PalmDownOffset;
-                            }
-                        }
-                        else
-                        {
-                            if (isPuppetLeftHand)
-                            {
-                                palmDir += NoteID.PalmDownOffset;
-                            }
-                            else
-                            {
-                                palmDir += NoteID.PalmUpOffset;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (vector.m9 > 0.0)
-                        {
-                            palmDir += NoteID.PalmBackwardOffset;
-                        }
-                        else
-                        {
-                            palmDir += NoteID.PalmForwardOffset;
-                        }
-                    }
-
-                    if (isPuppetLeftHand)
-                    {
-                        if (palmDir != currentLeftHandPalmDir)
-                        {
-                            if (currentLeftHandPalmDir >= 0)
-                            {
-                                NoteOff(currentLeftHandPalmDir);
-                            }
-                            NoteOn(palmDir);
-                            currentLeftHandPalmDir = palmDir;
-                        }
-                    }
-                    else
-                    {
-                        if (palmDir != currentRightHandPalmDir)
-                        {
-                            if (currentRightHandPalmDir >= 0)
-                            {
-                                NoteOff(currentRightHandPalmDir);
-                            }
-                            NoteOn(palmDir);
-                            currentRightHandPalmDir = palmDir;
-                        }
-
-                    }
-
-                    if (fps == 1)
-                    {
-                        // The README.md file references this output syntax.
-                        Debug((isPuppetLeftHand ? "PUPPET LEFT " : "PUPPET RIGHT") + "  x: " + vector.m3 + " (" + x + ")  y: " + vector.m7 + " (" + y + ")");
-
-                        // Don't get too verbose with both controllers.
+                        // The left vs right hands face opposite directions, so we need to know which hand the controller is to get it right.
                         if (isPuppetLeftHand)
                         {
-                            // The (X,Y) position of the controller is (m3,m7).
-                            // The direction the controller is pointing in is Zvec, so atan2(m6,m2) gives is the angle for rotating hands etc.
-                            Debug("LEFT MATRIX\n"
-                                + "   Xvec     Yvec     Zvec     Transpose\n"
-                                + "x  m0=" + r(vector.m0) + "  m1=" + r(vector.m1) + "  m2=" + r(vector.m2) + "  m3=" + r(vector.m3) + "\n"
-                                + "y  m4=" + r(vector.m4) + "  m5=" + r(vector.m5) + "  m6=" + r(vector.m6) + "  m7=" + r(vector.m7) + "\n"
-                                + "z  m8=" + r(vector.m8) + "  m9=" + r(vector.m9) + " m10=" + r(vector.m10) + " m11=" + r(vector.m11));
-                            Debug(" Rotation = " + MatrixToDegrees(vector, 0));
+                            palmDir += HtcMidiNotes.NoteID.PalmUpOffset;
                         }
-                    }
-
-                    // Send events for enabled controllers. In calibration mode we restrict to just one controller, which
-                    // makes rigging in Character Animator easier too.
-                    // Note: The right controller controls the puppets left hand and vice versa.
-                    if (isPuppetLeftHand)
-                    {
-                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftX)
+                        else
                         {
-                            Controller(ControllerID.LeftX, x);
-                        }
-                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftY)
-                        {
-                            Controller(ControllerID.LeftY, y);
-                        }
-                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftHandAngle)
-                        {
-                            // MIDI values are 0 to 127, so convert degrees to 0..127 range.
-                            Controller(ControllerID.LeftRotation, deg * 127 / 360);
+                            palmDir += HtcMidiNotes.NoteID.PalmDownOffset;
                         }
                     }
                     else
                     {
-                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightX)
+                        if (isPuppetLeftHand)
                         {
-                            Controller(ControllerID.RightX, x);
+                            palmDir += HtcMidiNotes.NoteID.PalmDownOffset;
                         }
-                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightY)
+                        else
                         {
-                            Controller(ControllerID.RightY, y);
-                        }
-                        if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightHandAngle)
-                        {
-                            // MIDI values are 0 to 127, so convert degrees to 0..127 range.
-                            Controller(ControllerID.RightRotation, deg * 127 / 360);
-                        }
-                    }
-                }
-            }
-
-            private void UpdateTrackpadNotes(VRControllerState_t controllerState, bool isPuppetLeftHand)
-            {
-
-                // Work out touchpad touch positions, turn notes on/off if anything has changed.
-                // Work out phone keypad position based on x & y (1..9)
-                float x = controllerState.rAxis0.x;
-                float y = controllerState.rAxis0.y;
-
-                /*
-                Debug("a0=" + controllerState.rAxis0.x
-                    + "a1=" + controllerState.rAxis1.x
-                    + "a2=" + controllerState.rAxis2.x
-                    + "a3=" + controllerState.rAxis3.x
-                    + "a4=" + controllerState.rAxis4.x
-                    );
-                    */
-
-                int keyNum;
-                /* Dividing touch pad into 4 squares like Rubix cube - but diagonals are less accurate because touchpad is round!
-                if (y > 0.5f)
-                {
-                    keyNum = (x < -0.5f) ? 1 : (x < 0.5f) ? 2 : 3;
-                }
-                else if (y > -0.5f)
-                {
-                    keyNum = (x < -0.5f) ? 4 : (x < 0.5f) ? 5 : 6;
-                }
-                else
-                {
-                    keyNum = (x < -0.5f) ? 7 : (x < 0.5f) ? 8 : 9;
-                }
-                */
-
-                // Get angle and distance from center, since trackpad is circular
-                double distance = Math.Sqrt(x * x + y * y);
-                if (distance < 0.5f)
-                {
-                    keyNum = 5; // Centroid
-                }
-                else
-                {
-                    double radians = Math.Atan2(y, x);
-                    double deg = radians * (180.0 / Math.PI);
-                    if (deg < 0.0) deg += 360;
-                    // deg is 0..360 for left, 90 up, 270 down, 0 right.
-                    // We have 8 sectors N, NW, W, SW, etc, each is 45 degrees. So -22.5 to 22.5 degress is East.
-                    int sector = (int)((deg + 22.5) / 45.0);
-                    //Debug("r=" + radians + " d=" + deg + " s=" + sector);
-                    switch (sector)
-                    {
-                        default: keyNum = 6; break; // E (can be 0 or 8)
-                        case 1: keyNum = 3; break; // NE
-                        case 2: keyNum = 2; break; // N
-                        case 3: keyNum = 1; break; // NW
-                        case 4: keyNum = 4; break; // W
-                        case 5: keyNum = 7; break; // SW
-                        case 6: keyNum = 8; break; // S
-                        case 7: keyNum = 9; break; // SE
-                    }
-                }
-
-                if (!isPuppetLeftHand)
-                {
-                    //Debug("TOUCH x=" + x + "  y=" + y + "  keynum=" + keyNum);
-
-                    // Left controller == puppet right hand
-                    int newNoteID = pressingRightTouchpad ? (NoteID.RightBase + NoteID.TouchpadPressOffset + keyNum)
-                        : touchingRightTouchpad ? (NoteID.RightBase + NoteID.TouchpadTouchOffset + keyNum)
-                        : -1;
-                    if (newNoteID != rightTouchNoteID)
-                    {
-                        if (rightTouchNoteID >= 0)
-                        {
-                            NoteOff(rightTouchNoteID);
-                        }
-                        rightTouchNoteID = newNoteID;
-                        if (rightTouchNoteID >= 0)
-                        {
-                            NoteOn(rightTouchNoteID);
+                            palmDir += HtcMidiNotes.NoteID.PalmUpOffset;
                         }
                     }
                 }
                 else
                 {
-                    // Right controller == puppet left hand
-                    int newNoteID = pressingLeftTouchpad ? (NoteID.LeftBase + NoteID.TouchpadPressOffset + keyNum)
-                        : touchingLeftTouchpad ? (NoteID.LeftBase + NoteID.TouchpadTouchOffset + keyNum)
-                        : -1;
-                    if (newNoteID != leftTouchNoteID)
+                    if (vector.m9 > 0.0)
                     {
-                        if (leftTouchNoteID >= 0)
-                        {
-                            NoteOff(leftTouchNoteID);
-                        }
-                        leftTouchNoteID = newNoteID;
-                        if (leftTouchNoteID >= 0)
-                        {
-                            NoteOn(leftTouchNoteID);
-                        }
+                        palmDir += HtcMidiNotes.NoteID.PalmBackwardOffset;
+                    }
+                    else
+                    {
+                        palmDir += HtcMidiNotes.NoteID.PalmForwardOffset;
                     }
                 }
-            }
 
-            private string r(float n)
-            {
-                return ((int)(n * 100.0)).ToString().PadLeft(4, ' ');
-            }
-
-            // Convert controller vector data to Adobe Character Animator degrees for rotations.
-            private int MatrixToDegrees(HmdMatrix34_t vector, int deltaAngle)
-            {
-                float deltaX = vector.m2;
-                float deltaY = vector.m6;
-                double rad = Math.Atan2(deltaY, deltaX); // In radians
-                int deg = (int)(rad * (180.0 / Math.PI));
-                deg = deg + 90;
-                deg = deg - deltaAngle;
-                while (deg < 0) deg += 360;
-                while (deg >= 360) deg -= 360;
-                return deg;
-            }
-
-            // Normalize controller value from 0 to 127 based on min/max values for that controller.
-            private int NormalizeControllerValue(float n, double min, double max)
-            {
-                int num = (int) (((n - min) / (max - min)) * 127);
-                if (num < 0) num = 0;
-                if (num > 127) num = 127;
-                return num;
-            }
-
-            private void Debug(string msg)
-            {
-                Console.WriteLine(msg);
-            }
-
-            private void InitHtc()
-            {
-                // https://github.com/ValveSoftware/openvr/issues/316
-
-                // Initialize VR subsystem.
-                EVRInitError eError = EVRInitError.None;
-                vrPointer = OpenVR.Init(ref eError, EVRApplicationType.VRApplication_Background);
-                if (eError != EVRInitError.None)
+                // Change the palm rotation, if it changed.
+                if (palmDir != currentPalmDir)
                 {
-                    vrPointer = null;
-
-                    // TODO: Yeah, should throw an exception...
-                    Console.WriteLine("Unable to init VR runtime: " + OpenVR.GetStringForHmdError(eError));
-                    Thread.Sleep(5000);
-                    System.Environment.Exit(1);
+                    if (currentPalmDir >= 0)
+                    {
+                        midi.NoteOff(currentPalmDir);
+                    }
+                    midi.NoteOn(palmDir);
+                    currentPalmDir = palmDir;
                 }
-            }
 
-            private void CloseHtc()
-            {
-                // Shutdown VR subsystem cleanly.
-                if (vrPointer != null)
+                // Debugging output.
+                if (verbose && false)
                 {
-                    OpenVR.Shutdown();
-                    vrPointer = null;
+                    // The README.md file references this output syntax.
+                    Console.WriteLine((isPuppetLeftHand ? "PUPPET LEFT " : "PUPPET RIGHT") + "  x: " + vector.m3 + " (" + x + ")  y: " + vector.m7 + " (" + y + ")");
+
+                    // Don't get too verbose with both controllers.
+                    if (isPuppetLeftHand)
+                    {
+                        // The (X,Y) position of the controller is (m3,m7).
+                        // The direction the controller is pointing in is Zvec, so atan2(m6,m2) gives is the angle for rotating hands etc.
+                        Console.WriteLine("LEFT MATRIX\n"
+                            + "   Xvec     Yvec     Zvec     Transpose\n"
+                            + "x  m0=" + r(vector.m0) + "  m1=" + r(vector.m1) + "  m2=" + r(vector.m2) + "  m3=" + r(vector.m3) + "\n"
+                            + "y  m4=" + r(vector.m4) + "  m5=" + r(vector.m5) + "  m6=" + r(vector.m6) + "  m7=" + r(vector.m7) + "\n"
+                            + "z  m8=" + r(vector.m8) + "  m9=" + r(vector.m9) + " m10=" + r(vector.m10) + " m11=" + r(vector.m11));
+                        Console.WriteLine(" Rotation = " + MatrixToDegrees(vector, 0));
+                    }
                 }
-            }
 
-            public void TestLimits()
-            {
-                while (true)
+                // Send events for enabled controllers. In calibration mode we restrict to just one controller, which
+                // makes rigging in Character Animator easier too.
+                // Note: The right controller controls the puppets left hand and vice versa.
+                if (isPuppetLeftHand)
                 {
-                    if (controllerEnablement == ControllerEnablement.All)
-                    {
-                        // Move hands around in a circle, adjusting the angle as well.
-                        for (int deg = 200; deg < 360 + 200; deg++)
-                        {
-                            int x = (int)((Math.Cos((deg - 90) * (Math.PI / 180.0)) + 1.0) * 32.0);
-                            int y = (int)((Math.Sin((deg - 90) * (Math.PI / 180.0)) + 1.0) * 63.0);
-                            Controller(ControllerID.RightX, x);
-                            Controller(ControllerID.RightY, y);
-                            Controller(ControllerID.RightRotation, ((deg - rightHandAngle + 360) * 127 / 360) % 127);
-                            Thread.Sleep(5);
-                        }
-                        for (int deg = 160; deg < 360 + 160; deg++)
-                        {
-                            int x = (int)((Math.Cos((deg - 90) * (Math.PI / 180.0)) + 1.0) * 48.0) + 28;
-                            int y = (int)((Math.Sin((deg - 90) * (Math.PI / 180.0)) + 1.0) * 63.0);
-                            Controller(ControllerID.LeftX, x);
-                            Controller(ControllerID.LeftY, y);
-                            Controller(ControllerID.LeftRotation, ((deg - leftHandAngle + 360) * 127 / 360) % 127);
-                            Thread.Sleep(5);
-                        }
-                    }
-
-                    if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightX)
-                    {
-                        Thread.Sleep(1000);
-                        Debug("RightX Controller");
-                        for (int i = 127; i >= 0; i--)
-                        {
-                            Controller(ControllerID.RightX, i);
-                            Thread.Sleep(10);
-                        }
-                    }
-                    if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightY)
-                    {
-                        Thread.Sleep(1000);
-                        Debug("RightY Controller");
-                        for (int i = 0; i <= 127; i++)
-                        {
-                            Controller(ControllerID.RightY, i);
-                            Thread.Sleep(10);
-                        }
-                    }
-                    if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.RightHandAngle)
-                    {
-                        Thread.Sleep(1000);
-                        Debug("RightRotation Controller");
-                        for (int i = 0; i <= 127; i++)
-                        {
-                            Controller(ControllerID.RightRotation, i);
-                            Thread.Sleep(10);
-                        }
-                    }
-
-                    if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftX)
-                    {
-                        Thread.Sleep(1000);
-                        Debug("LeftX Controller");
-                        for (int i = 0; i <= 127; i++)
-                        {
-                            Controller(ControllerID.LeftX, i);
-                            Thread.Sleep(10);
-                        }
-                    }
-                    if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftY)
-                    {
-                        Thread.Sleep(1000);
-                        Debug("LeftY Controller");
-                        for (int i = 0; i <= 127; i++)
-                        {
-                            Controller(ControllerID.LeftY, i);
-                            Thread.Sleep(10);
-                        }
-                    }
-                    if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.LeftHandAngle)
-                    {
-                        Thread.Sleep(1000);
-                        Debug("LeftRotation Controller");
-                        for (int i = 0; i <= 127; i++)
-                        {
-                            Controller(ControllerID.LeftRotation, i);
-                            Thread.Sleep(10);
-                        }
-                    }
-
-                    if (controllerEnablement == ControllerEnablement.All || controllerEnablement == ControllerEnablement.Notes)
-                    {
-                        foreach (NoteStruct n in notes)
-                        {
-                            Debug(n.Description);
-                            NoteOn(n.NoteID);
-                            Thread.Sleep(1000);
-                            NoteOff(n.NoteID);
-                        }
-
-                        // Test hand rotations with trigger on/off.
-                        Thread.Sleep(1000);
-                        Debug("Palm forward + trigger");
-                        NoteOn(NoteID.LeftBase + NoteID.PalmForwardOffset);
-                        Thread.Sleep(1000);
-                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(1000);
-                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        NoteOff(NoteID.LeftBase + NoteID.PalmForwardOffset);
-
-                        Thread.Sleep(1000);
-                        Debug("Palm down + trigger");
-                        NoteOn(NoteID.LeftBase + NoteID.PalmDownOffset);
-                        Thread.Sleep(1000);
-                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(1000);
-                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        NoteOff(NoteID.LeftBase + NoteID.PalmDownOffset);
-
-                        Thread.Sleep(1000);
-                        Debug("Palm back + trigger");
-                        NoteOn(NoteID.LeftBase + NoteID.PalmBackwardOffset);
-                        Thread.Sleep(1000);
-                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(1000);
-                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        NoteOff(NoteID.LeftBase + NoteID.PalmBackwardOffset);
-
-                        Thread.Sleep(1000);
-                        Debug("Palm up + trigger");
-                        NoteOn(NoteID.LeftBase + NoteID.PalmUpOffset);
-                        Thread.Sleep(1000);
-                        NoteOn(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(1000);
-                        NoteOff(NoteID.LeftBase + NoteID.TriggerButtonOffset);
-                        NoteOff(NoteID.LeftBase + NoteID.PalmUpOffset);
-
-                        // Test hand rotations with trigger on/off.
-                        Thread.Sleep(1000);
-                        Debug("Palm forward + trigger");
-                        NoteOn(NoteID.RightBase + NoteID.PalmForwardOffset);
-                        Thread.Sleep(1000);
-                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(1000);
-                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        NoteOff(NoteID.RightBase + NoteID.PalmForwardOffset);
-
-                        Thread.Sleep(1000);
-                        Debug("Palm down + trigger");
-                        NoteOn(NoteID.RightBase + NoteID.PalmDownOffset);
-                        Thread.Sleep(1000);
-                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(1000);
-                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        NoteOff(NoteID.RightBase + NoteID.PalmDownOffset);
-
-                        Thread.Sleep(1000);
-                        Debug("Palm back + trigger");
-                        NoteOn(NoteID.RightBase + NoteID.PalmBackwardOffset);
-                        Thread.Sleep(1000);
-                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(1000);
-                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        NoteOff(NoteID.RightBase + NoteID.PalmBackwardOffset);
-
-                        Thread.Sleep(1000);
-                        Debug("Palm up + trigger");
-                        NoteOn(NoteID.RightBase + NoteID.PalmUpOffset);
-                        Thread.Sleep(1000);
-                        NoteOn(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        Thread.Sleep(1000);
-                        NoteOff(NoteID.RightBase + NoteID.TriggerButtonOffset);
-                        NoteOff(NoteID.RightBase + NoteID.PalmUpOffset);
-
-                    }
+                    midi.Controller(HtcMidiNotes.ControllerID.LeftX, x);
+                    midi.Controller(HtcMidiNotes.ControllerID.LeftY, y);
+                    // MIDI values are 0 to 127, so convert degrees to 0..127 range.
+                    midi.Controller(HtcMidiNotes.ControllerID.LeftRotation, deg * 127 / 360);
+                }
+                else
+                {
+                    midi.Controller(HtcMidiNotes.ControllerID.RightX, x);
+                    midi.Controller(HtcMidiNotes.ControllerID.RightY, y);
+                    // MIDI values are 0 to 127, so convert degrees to 0..127 range.
+                    midi.Controller(HtcMidiNotes.ControllerID.RightRotation, deg * 127 / 360);
                 }
             }
         }
 
-        private class ParseOptions
+
+        // Work out the touchpad X/Y and convert to triggers (9 zones, touched or pressed).
+        internal void UpdateTrackpadNotes(VRControllerState_t controllerState)
         {
-            private int argNum = 0;
-            private string[] args;
+            // Work out touchpad touch positions, turn notes on/off if anything has changed.
+            // Work out phone keypad position based on x & y (1..9)
+            // (Trigger button is Axis1)
+            float x = controllerState.rAxis0.x;
+            float y = controllerState.rAxis0.y;
 
-            public ParseOptions(string[] args)
+            // Get angle and distance from center, since trackpad is circular
+            int keyNum;
+            double distance = Math.Sqrt(x * x + y * y);
+            if (distance < 0.5f)
             {
-                this.args = args;
+                keyNum = 5; // Centroid
             }
-
-            public bool MoreArgs()
+            else
             {
-                return argNum < args.Length;
-            }
-
-            // Always call IsArg() followed by ArgParam()
-            public bool IsArg(string shortForm, string longForm)
-            {
-                bool isArg = (argNum + 1) < args.Length && (args[argNum] == shortForm || args[argNum] == longForm);
-                if (isArg)
+                double radians = Math.Atan2(y, x);
+                double deg = radians * (180.0 / Math.PI);
+                if (deg < 0.0) deg += 360;
+                // deg is 0..360 for left, 90 up, 270 down, 0 right.
+                // We have 8 sectors N, NW, W, SW, etc, each is 45 degrees. So -22.5 to 22.5 degress is East.
+                int sector = (int)((deg + 22.5) / 45.0);
+                switch (sector)
                 {
-                    argNum++;
+                    default: keyNum = 6; break; // E (can be 0 or 8)
+                    case 1: keyNum = 3; break; // NE
+                    case 2: keyNum = 2; break; // N
+                    case 3: keyNum = 1; break; // NW
+                    case 4: keyNum = 4; break; // W
+                    case 5: keyNum = 7; break; // SW
+                    case 6: keyNum = 8; break; // S
+                    case 7: keyNum = 9; break; // SE
                 }
-                return isArg;
             }
 
-            public string ArgParam()
+            // Left controller == puppet right hand
+            int newNoteID = pressingTouchpad ? (baseNoteID + HtcMidiNotes.NoteID.TouchpadPressOffset + keyNum)
+                : touchingTouchpad ? (baseNoteID + HtcMidiNotes.NoteID.TouchpadTouchOffset + keyNum)
+                : -1;
+            if (newNoteID != touchNoteID)
             {
-                return args[argNum++];
-            }
-
-            // Argument without a parameter value.
-            public bool IsFlag(string shortForm, string longForm)
-            {
-                bool isArg = argNum < args.Length && (args[argNum] == shortForm || args[argNum] == longForm);
-                if (isArg)
+                if (touchNoteID >= 0)
                 {
-                    argNum++;
+                    midi.NoteOff(touchNoteID);
                 }
-                return isArg;
+                touchNoteID = newNoteID;
+                if (touchNoteID >= 0)
+                {
+                    midi.NoteOn(touchNoteID);
+                }
             }
-           }
+        }
 
+        // Round the float off to percentages, for display in debugging messages.
+        private string r(float n)
+        {
+            return ((int)(n * 100.0)).ToString().PadLeft(4, ' ');
+        }
+
+        // Convert controller vector data to Adobe Character Animator degrees for rotations.
+        private int MatrixToDegrees(HmdMatrix34_t vector, int deltaAngle)
+        {
+            float deltaX = vector.m2;
+            float deltaY = vector.m6;
+            double rad = Math.Atan2(deltaY, deltaX); // In radians
+            int deg = (int)(rad * (180.0 / Math.PI));
+            deg = deg + 90;
+            deg = deg - deltaAngle;
+            while (deg < 0) deg += 360;
+            while (deg >= 360) deg -= 360;
+            return deg;
+        }
+
+        // Normalize controller value from 0 to 127 based on min/max values for that controller.
+        private int NormalizeControllerValue(float n, double min, double max)
+        {
+            int num = (int)(((n - min) / (max - min)) * 127);
+            if (num < 0) num = 0;
+            if (num > 127) num = 127;
+            return num;
+        }
+    }
+
+    // HTC Controller main processing loop.
+    internal class HtcToMidi
+    {
+        private Midi midi;
+        private int fps;
+        private SceneDimensions sceneDimensions;
+        uint leftControllerDeviceIndex;
+        uint rightControllerDeviceIndex;
+        private CVRSystem vrPointer;
+        private HandController leftHand;
+        private HandController rightHand;
+        private Visor visor;
+
+        public HtcToMidi(Midi midi, int fps, SceneDimensions sceneDimensions, int leftHandAngle, int rightHandAngle)
+        {
+            this.midi = midi;
+            this.fps = fps;
+            this.sceneDimensions = sceneDimensions;
+            this.leftHand = new HandController(midi, leftHandAngle, HtcMidiNotes.NoteID.LeftBase, sceneDimensions, true, fps == 1);
+            this.rightHand = new HandController(midi, rightHandAngle, HtcMidiNotes.NoteID.RightBase, sceneDimensions, false, fps == 1);
+            this.visor = new Visor(midi, 0, HtcMidiNotes.NoteID.RightBase, sceneDimensions, fps == 1);
+        }
+
+        // Initialize the HTC controller.
+        private void InitHtc()
+        {
+            // https://github.com/ValveSoftware/openvr/issues/316
+
+            // Initialize VR subsystem.
+            EVRInitError eError = EVRInitError.None;
+            vrPointer = OpenVR.Init(ref eError, EVRApplicationType.VRApplication_Background);
+            if (eError != EVRInitError.None)
+            {
+                vrPointer = null;
+
+                // TODO: Yeah, should throw an exception...
+                Console.WriteLine("Unable to init VR runtime: " + OpenVR.GetStringForHmdError(eError));
+                Thread.Sleep(5000);
+                System.Environment.Exit(1);
+            }
+
+            // Find the left and right controllers.
+            leftControllerDeviceIndex = vrPointer.GetTrackedDeviceIndexForControllerRole(ETrackedControllerRole.LeftHand);
+            rightControllerDeviceIndex = vrPointer.GetTrackedDeviceIndexForControllerRole(ETrackedControllerRole.RightHand);
+        }
+
+        // Main processing loop.
+        public void ProcessHtcEvents()
+        {
+            InitHtc();
+
+            // Loop polling for VR events.
+            bool exitLoop = false;
+            while (!exitLoop)
+            {
+                VREvent_t pEvent = new VREvent_t();
+
+                // Process all events the have built up (returns false when all events done).
+                while (vrPointer.PollNextEvent(ref pEvent, (uint)Marshal.SizeOf(pEvent)))
+                {
+                    switch ((EVREventType)pEvent.eventType)
+                    {
+                        case EVREventType.VREvent_Quit:
+                        case EVREventType.VREvent_ProcessQuit:
+                        case EVREventType.VREvent_QuitAborted_UserPrompt:
+                        case EVREventType.VREvent_QuitAcknowledged:
+                            {
+                                exitLoop = true;
+                                break;
+                            }
+
+                        case EVREventType.VREvent_ButtonPress:
+                        case EVREventType.VREvent_ButtonUnpress:
+                        case EVREventType.VREvent_ButtonTouch:
+                        case EVREventType.VREvent_ButtonUntouch:
+                            {
+                                ETrackedDeviceClass trackedDeviceClass = vrPointer.GetTrackedDeviceClass(pEvent.trackedDeviceIndex);
+                                if (trackedDeviceClass == ETrackedDeviceClass.Controller)
+                                {
+                                    ETrackedControllerRole role = vrPointer.GetControllerRoleForTrackedDeviceIndex(pEvent.trackedDeviceIndex);
+                                    if (role == ETrackedControllerRole.LeftHand)
+                                    {
+                                        rightHand.ProcessEvent(pEvent);
+                                    }
+                                    else if (role == ETrackedControllerRole.RightHand)
+                                    {
+                                        leftHand.ProcessEvent(pEvent);
+                                    }
+
+
+                                }
+                                break;
+                            }
+                    }
+                }
+
+                // Get HMD (the visor) position.
+                if (vrPointer.IsTrackedDeviceConnected(0))
+                {
+                    TrackedDevicePose_t[] trackedDevicePoses = new TrackedDevicePose_t[1];
+                    trackedDevicePoses[0] = new TrackedDevicePose_t();
+                    vrPointer.GetDeviceToAbsoluteTrackingPose(ETrackingUniverseOrigin.TrackingUniverseStanding, 0.0f, trackedDevicePoses);
+                    TrackedDevicePose_t trackedDevicePose = trackedDevicePoses[0];
+                    visor.UpdateHeadPositionAndAngle(trackedDevicePose);
+                }
+
+                // Get tracking information for left and right controllers.
+                if (leftControllerDeviceIndex >= 0)
+                {
+                    if (vrPointer.IsTrackedDeviceConnected(leftControllerDeviceIndex))
+                    {
+                        // Get positional data of controllers to see if should send new Controller events.
+                        TrackedDevicePose_t trackedDevicePose = new TrackedDevicePose_t();
+                        VRControllerState_t controllerState = new VRControllerState_t();
+
+                        if (vrPointer.GetControllerStateWithPose(ETrackingUniverseOrigin.TrackingUniverseStanding, leftControllerDeviceIndex, ref controllerState, (uint)Marshal.SizeOf(controllerState), ref trackedDevicePose))
+                        {
+                            // The left controller is the puppets right hand.
+                            rightHand.UpdateTrackpadNotes(controllerState);
+                            rightHand.UpdateHandPositionsAndAngle(trackedDevicePose);
+                        }
+                    }
+                }
+                if (rightControllerDeviceIndex >= 0)
+                {
+                    if (vrPointer.IsTrackedDeviceConnected(rightControllerDeviceIndex))
+                    {
+                        // Get positional data of controllers to see if should send new Controller events.
+                        TrackedDevicePose_t trackedDevicePose = new TrackedDevicePose_t();
+                        VRControllerState_t controllerState = new VRControllerState_t();
+
+                        if (vrPointer.GetControllerStateWithPose(ETrackingUniverseOrigin.TrackingUniverseStanding, rightControllerDeviceIndex, ref controllerState, (uint)Marshal.SizeOf(controllerState), ref trackedDevicePose))
+                        {
+                            // The left controller is the puppets right hand.
+                            leftHand.UpdateTrackpadNotes(controllerState);
+                            leftHand.UpdateHandPositionsAndAngle(trackedDevicePose);
+                        }
+                    }
+                }
+
+                // Send events no faster than requested frames per second
+                Thread.Sleep(1000 / fps);
+            }
+
+            CloseHtc();
+        }
+
+        // Shut down the HTC controller.
+        private void CloseHtc()
+        {
+            // Shutdown VR subsystem cleanly.
+            if (vrPointer != null)
+            {
+                OpenVR.Shutdown();
+                vrPointer = null;
+            }
+        }
+    }
+
+    // Parse command line options for the main program.
+    internal class ParseOptions
+    {
+        private int argNum = 0;
+        private string[] args;
+
+        // Constructor
+        public ParseOptions(string[] args)
+        {
+            this.args = args;
+        }
+
+        // Returns true if there are more options to parse.
+        public bool MoreArgs()
+        {
+            return argNum < args.Length;
+        }
+
+        // Always call IsArg() followed by ArgParam() to get the value.
+        public bool IsArg(string shortForm, string longForm)
+        {
+            bool isArg = (argNum + 1) < args.Length && (args[argNum] == shortForm || args[argNum] == longForm);
+            if (isArg)
+            {
+                argNum++;
+            }
+            return isArg;
+        }
+
+        // Get next argument from command line.
+        public string ArgParam()
+        {
+            return args[argNum++];
+        }
+
+        // Argument without a parameter value.
+        public bool IsFlag(string shortForm, string longForm)
+        {
+            bool isArg = argNum < args.Length && (args[argNum] == shortForm || args[argNum] == longForm);
+            if (isArg)
+            {
+                argNum++;
+            }
+            return isArg;
+        }
+    }
+
+    // The main programm class.
+    class HtcProgram
+    {
         // Main program.
         static void Main(string[] args)
         {
             // Defer connecting to MIDI device until we have parsed command line options.
-            HtcToMidi h2m = null;
+            Midi midi = null;
 
             Console.WriteLine("MIDI Device Count = " + OutputDevice.DeviceCount);
 
@@ -954,7 +896,7 @@ namespace HtcMidi
             int lha = 140;
             bool testMode = false;
             bool noteSent = false;
-            ControllerEnablement controllerEnablement = ControllerEnablement.All;
+            bool cFlagSpecified = false;
 
             ParseOptions parser = new ParseOptions(args);
             while (parser.MoreArgs())
@@ -1040,30 +982,42 @@ namespace HtcMidi
                     int noteID = ParseNoteID(arg);
 
                     // Great! Send the note!
-                    if (h2m == null)
+                    if (midi == null)
                     {
-                        h2m = ConnectToMidiDevice(outDeviceID, channelNumber, fps, minX, maxX, minY, maxY, rha, lha, controllerEnablement);
+                        midi = new Midi(outDeviceID, channelNumber);
                     }
-                    h2m.NoteOn(noteID);
+                    midi.NoteOn(noteID);
                     Thread.Sleep(2000);
-                    h2m.NoteOff(noteID);
+                    midi.NoteOff(noteID);
                     noteSent = true;
                 }
-                else if (parser.IsArg("-C", "--controller"))
+                else if (parser.IsArg("-e", "--enable"))
                 {
-                    // See which controllers to enable. (It is useful to restrict controllers when doing rigging in Character Animator.)
+                    // See which MIDI events to enable. (It is useful to restrict controllers when doing rigging in Character Animator.)
+                    if (!cFlagSpecified)
+                    {
+                        if (midi == null)
+                        {
+                            midi = new Midi(outDeviceID, channelNumber);
+                        }
+                        midi.DisableAll();
+                        cFlagSpecified = true;
+                    }
+
                     switch (parser.ArgParam())
                     {
-                        case "all": { controllerEnablement = ControllerEnablement.All; break; }
-                        case "none": { controllerEnablement = ControllerEnablement.None; break; }
-                        case "notes": { controllerEnablement = ControllerEnablement.Notes; break; }
-                        case "lx": { controllerEnablement = ControllerEnablement.LeftX; break; }
-                        case "ly": { controllerEnablement = ControllerEnablement.LeftY; break; }
-                        case "la": { controllerEnablement = ControllerEnablement.LeftHandAngle; break; }
-                        case "rx": { controllerEnablement = ControllerEnablement.RightX; break; }
-                        case "ry": { controllerEnablement = ControllerEnablement.RightY; break; }
-                        case "ra": { controllerEnablement = ControllerEnablement.RightHandAngle; break; }
-                        default: { Usage("Unknown controller name"); break; }
+                        case "all": midi.EnableAll(); break;
+                        case "notes": midi.EnableNotes(); break;
+                        case "hx": midi.EnableController(HtcMidiNotes.ControllerID.HeadX); break;
+                        case "hy": midi.EnableController(HtcMidiNotes.ControllerID.HeadY); break;
+                        case "ha": midi.EnableController(HtcMidiNotes.ControllerID.HeadRotation); break;
+                        case "lx": midi.EnableController(HtcMidiNotes.ControllerID.LeftX); break;
+                        case "ly": midi.EnableController(HtcMidiNotes.ControllerID.LeftY); break;
+                        case "la": midi.EnableController(HtcMidiNotes.ControllerID.LeftRotation); break;
+                        case "rx": midi.EnableController(HtcMidiNotes.ControllerID.RightX); break;
+                        case "ry": midi.EnableController(HtcMidiNotes.ControllerID.RightY); break;
+                        case "ra": midi.EnableController(HtcMidiNotes.ControllerID.RightRotation); break;
+                        default: Usage("Unknown enable flag"); break;
                     }
                 }
                 else
@@ -1075,15 +1029,16 @@ namespace HtcMidi
             // If we sent a note, then our job is done.
             if (!noteSent)
             {
-                if (h2m == null)
+                if (midi == null)
                 {
-                    h2m = ConnectToMidiDevice(outDeviceID, channelNumber, fps, minX, maxX, minY, maxY, rha, lha, controllerEnablement);
+                    midi = new Midi(outDeviceID, channelNumber);
                 }
+                HtcToMidi h2m = new HtcToMidi(midi, fps, new SceneDimensions(minX, minY, maxX, maxY), rha, lha);
 
                 if (testMode)
                 {
                     // Generate events showing the limits of all the controls, so can calibrate the settings without having a HTC Vive handy.
-                    h2m.TestLimits();
+                    TestLimits(midi, lha, rha);
                 }
                 else
                 {
@@ -1093,12 +1048,13 @@ namespace HtcMidi
             }
         }
 
+        // Parse a note name (e.g. "C3", or "63", or "lamb").
         private static int ParseNoteID(string arg)
         {
             int noteID = -1;
 
             // Look up button names.
-            foreach (NoteStruct n in notes)
+            foreach (HtcMidiNotes.NoteMetadata n in HtcMidiNotes.noteMetadata)
             {
                 if (n.Name == arg)
                 {
@@ -1139,7 +1095,7 @@ namespace HtcMidi
                 int noteNum = -1;
                 for (int i = 0; i < 12; i++)
                 {
-                    if (noteNames[i] == name)
+                    if (HtcMidiNotes.noteNames[i] == name)
                     {
                         noteNum = i;
                         break;
@@ -1159,15 +1115,7 @@ namespace HtcMidi
             return noteID;
         }
 
-        private static HtcToMidi ConnectToMidiDevice(int outDeviceID, int channelNumber, int fps, float minX, float maxX, float minY, float maxY, int rha, int lha, ControllerEnablement controllerEnablement)
-        {
-            // Connect to the MIDI output device.
-            Console.WriteLine("Connecting to " + OutputDevice.GetDeviceCapabilities(outDeviceID).name);
-            OutputDevice outDevice = new OutputDevice(outDeviceID);
-            HtcToMidi h2m = new HtcToMidi(outDevice, channelNumber, fps, controllerEnablement, minX, maxX, minY, maxY, lha, rha);
-            return h2m;
-        }
-
+        // Common reporting of usage and command line options.
         private static void Usage(string message)
         {
             Console.WriteLine(message);
@@ -1183,7 +1131,7 @@ namespace HtcMidi
             Console.WriteLine("-lha|--left-hand-angle <int>    Default angle of puppets left hand (140)");
             Console.WriteLine("-t|--test             Generate a selection of synthentic test data (off)");
             Console.WriteLine("-n|--note <string>    Send a single note for the given note/button (off)");
-            Console.WriteLine("-C|--controller all|none|lx|ly|la|rx|ry|ra   Only send specifed controller data (all)");
+            Console.WriteLine("-e|--enable all|notes|hx|hy|ha|lx|ly|la|rx|ry|ra   Limit what MIDI events are sent (all)");
             Console.WriteLine("\ne.g. HtcMidi -lha 90 -rha 90 --test");
             Console.WriteLine("\ne.g. HtcMidi --note ltop   (send left touchpad press)");
             Console.WriteLine("\nAvailable MIDI devices:");
@@ -1194,12 +1142,227 @@ namespace HtcMidi
             }
             Console.WriteLine("\nNote names can be note numbers (60 = C4), 'G#3', or button names.");
             Console.WriteLine("Buttons:");
-            foreach (NoteStruct n in notes)
+            foreach (HtcMidiNotes.NoteMetadata n in HtcMidiNotes.noteMetadata)
             {
-                Console.WriteLine(n.Name + " (" + NoteIDToString(n.NoteID) + " " + n.NoteID + ") - " + n.Description);
+                Console.WriteLine(n.Name + " (" + HtcMidiNotes.NoteIDToString(n.NoteID) + " " + n.NoteID + ") - " + n.Description);
             }
             Thread.Sleep(5000);
             System.Environment.Exit(1);
+        }
+
+        // Generate lots of test MIDI data for testing purposes, without needing a HTC Vive.
+        public static void TestLimits(Midi midi, int leftHandAngle, int rightHandAngle)
+        {
+            while (true)
+            {
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.HeadX)
+                    || midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.HeadY)
+                    || midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.HeadRotation))
+                {
+                    // Tilt head from left to right
+                    Console.WriteLine("Head tilt");
+                    for (int i = 0; i <= 180; i++)
+                    {
+                        // We want to start and end in middle with head swaying backwards and forwards
+                        // i=0..45 maps to deg=360..315; 45..90->315..360; 90..135->0..45; 135..180->45..0
+                        int deg = (i < 45) ? (360 - i) :
+                            (i < 90) ? (270 + i) :
+                            (i < 135) ? (i - 90) :
+                            (180 - i);
+
+                        // Head moves for moving the body around
+                        int x = (int)((Math.Cos((deg - 90) * (Math.PI / 180.0)) + 1.0) * 32.0) + 32;
+                        int y = (int)((Math.Sin((deg - 90) * (Math.PI / 180.0)) + 1.0) * 16.0) + 80;
+                        midi.Controller(HtcMidiNotes.ControllerID.HeadX, x);
+                        midi.Controller(HtcMidiNotes.ControllerID.HeadY, y);
+                        int headAngle = 0; // Might need later in case heads don't always point upwards!
+                        midi.Controller(HtcMidiNotes.ControllerID.HeadRotation, ((deg - headAngle + 360) * 127 / 360) % 127);
+                        Thread.Sleep(10);
+                    }
+                }
+
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.RightX)
+                    || midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.RightY)
+                    || midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.RightRotation))
+                {
+                    // Move hands around in a circle, adjusting the angle as well.
+                    Console.WriteLine("Right Hand");
+                    for (int deg = 200; deg < 360 + 200; deg++)
+                    {
+                        int x = (int)((Math.Cos((deg - 90) * (Math.PI / 180.0)) + 1.0) * 32.0);
+                        int y = (int)((Math.Sin((deg - 90) * (Math.PI / 180.0)) + 1.0) * 63.0);
+                        midi.Controller(HtcMidiNotes.ControllerID.RightX, x);
+                        midi.Controller(HtcMidiNotes.ControllerID.RightY, y);
+                        midi.Controller(HtcMidiNotes.ControllerID.RightRotation, ((deg - rightHandAngle + 360) * 127 / 360) % 127);
+                        Thread.Sleep(5);
+                    }
+                }
+
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.LeftX)
+                    || midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.LeftY)
+                    || midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.LeftRotation))
+                {
+                    // Move hands around in a circle, adjusting the angle as well.
+                    Console.WriteLine("Left Hand");
+                    for (int deg = 160; deg < 360 + 160; deg++)
+                    {
+                        int x = (int)((Math.Cos((deg - 90) * (Math.PI / 180.0)) + 1.0) * 48.0) + 28;
+                        int y = (int)((Math.Sin((deg - 90) * (Math.PI / 180.0)) + 1.0) * 63.0);
+                        midi.Controller(HtcMidiNotes.ControllerID.LeftX, x);
+                        midi.Controller(HtcMidiNotes.ControllerID.LeftY, y);
+                        midi.Controller(HtcMidiNotes.ControllerID.LeftRotation, ((deg - leftHandAngle + 360) * 127 / 360) % 127);
+                        Thread.Sleep(5);
+                    }
+                }
+
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.RightX))
+                {
+                    Thread.Sleep(1000);
+                    Console.WriteLine("RightX Controller");
+                    for (int i = 127; i >= 0; i--)
+                    {
+                        midi.Controller(HtcMidiNotes.ControllerID.RightX, i);
+                        Thread.Sleep(10);
+                    }
+                }
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.RightY))
+                {
+                    Thread.Sleep(1000);
+                    Console.WriteLine("RightY Controller");
+                    for (int i = 0; i <= 127; i++)
+                    {
+                        midi.Controller(HtcMidiNotes.ControllerID.RightY, i);
+                        Thread.Sleep(10);
+                    }
+                }
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.RightRotation))
+                {
+                    Thread.Sleep(1000);
+                    Console.WriteLine("RightRotation Controller");
+                    for (int i = 0; i <= 127; i++)
+                    {
+                        midi.Controller(HtcMidiNotes.ControllerID.RightRotation, i);
+                        Thread.Sleep(10);
+                    }
+                }
+
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.LeftX))
+                {
+                    Thread.Sleep(1000);
+                    Console.WriteLine("LeftX Controller");
+                    for (int i = 0; i <= 127; i++)
+                    {
+                        midi.Controller(HtcMidiNotes.ControllerID.LeftX, i);
+                        Thread.Sleep(10);
+                    }
+                }
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.LeftY))
+                {
+                    Thread.Sleep(1000);
+                    Console.WriteLine("LeftY Controller");
+                    for (int i = 0; i <= 127; i++)
+                    {
+                        midi.Controller(HtcMidiNotes.ControllerID.LeftY, i);
+                        Thread.Sleep(10);
+                    }
+                }
+                if (midi.ControllerIsEnabled(HtcMidiNotes.ControllerID.LeftRotation))
+                {
+                    Thread.Sleep(1000);
+                    Console.WriteLine("LeftRotation Controller");
+                    for (int i = 0; i <= 127; i++)
+                    {
+                        midi.Controller(HtcMidiNotes.ControllerID.LeftRotation, i);
+                        Thread.Sleep(10);
+                    }
+                }
+
+                if (midi.NotesAreEnabled())
+                {
+                    foreach (HtcMidiNotes.NoteMetadata n in HtcMidiNotes.noteMetadata)
+                    {
+                        Console.WriteLine(n.Description);
+                        midi.NoteOn(n.NoteID);
+                        Thread.Sleep(1000);
+                        midi.NoteOff(n.NoteID);
+                    }
+
+                    // Test hand rotations with trigger on/off.
+                    Thread.Sleep(1000);
+                    Console.WriteLine("Palm forward + trigger");
+                    midi.NoteOn(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.PalmForwardOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOn(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOff(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    midi.NoteOff(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.PalmForwardOffset);
+
+                    Thread.Sleep(1000);
+                    Console.WriteLine("Palm down + trigger");
+                    midi.NoteOn(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.PalmDownOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOn(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOff(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    midi.NoteOff(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.PalmDownOffset);
+
+                    Thread.Sleep(1000);
+                    Console.WriteLine("Palm back + trigger");
+                    midi.NoteOn(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.PalmBackwardOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOn(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOff(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    midi.NoteOff(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.PalmBackwardOffset);
+
+                    Thread.Sleep(1000);
+                    Console.WriteLine("Palm up + trigger");
+                    midi.NoteOn(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.PalmUpOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOn(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOff(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    midi.NoteOff(HtcMidiNotes.NoteID.LeftBase + HtcMidiNotes.NoteID.PalmUpOffset);
+
+                    // Test hand rotations with trigger on/off.
+                    Thread.Sleep(1000);
+                    Console.WriteLine("Palm forward + trigger");
+                    midi.NoteOn(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.PalmForwardOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOn(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOff(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    midi.NoteOff(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.PalmForwardOffset);
+
+                    Thread.Sleep(1000);
+                    Console.WriteLine("Palm down + trigger");
+                    midi.NoteOn(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.PalmDownOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOn(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOff(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    midi.NoteOff(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.PalmDownOffset);
+
+                    Thread.Sleep(1000);
+                    Console.WriteLine("Palm back + trigger");
+                    midi.NoteOn(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.PalmBackwardOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOn(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOff(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    midi.NoteOff(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.PalmBackwardOffset);
+
+                    Thread.Sleep(1000);
+                    Console.WriteLine("Palm up + trigger");
+                    midi.NoteOn(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.PalmUpOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOn(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    Thread.Sleep(1000);
+                    midi.NoteOff(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.TriggerButtonOffset);
+                    midi.NoteOff(HtcMidiNotes.NoteID.RightBase + HtcMidiNotes.NoteID.PalmUpOffset);
+
+                }
+            }
         }
     }
 }
